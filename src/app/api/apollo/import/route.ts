@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
 import Lead from '@/lib/models/Lead';
 import { scoreLead } from '@/lib/utils/scoreLead';
+import { writeAuditLog } from '@/lib/utils/auditLog';
+import { getRequestActor } from '@/lib/utils/requestActor';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body: any = await req.json();
@@ -121,6 +123,15 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+
+    const actor = await getRequestActor(req);
+    void writeAuditLog({
+      action: 'lead_imported',
+      ...actor,
+      targetId: String(savedLead._id),
+      targetLabel: companyName,
+      meta: { source: 'apollo', email: normalizedEmail },
+    });
 
     return NextResponse.json({
       success: true,

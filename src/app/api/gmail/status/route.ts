@@ -3,12 +3,11 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
 import InboxAccount from '@/lib/models/InboxAccount';
+import { getSettings } from '@/lib/services/settingsCache';
 
 export async function GET() {
-  const configured =
-    !!process.env.GOOGLE_CLIENT_ID &&
-    !!process.env.GOOGLE_CLIENT_SECRET &&
-    !!process.env.GOOGLE_REDIRECT_URI;
+  const s = await getSettings();
+  const configured = !!(s.googleClientId && s.googleClientSecret && s.googleRedirectUri);
 
   if (!configured) {
     return NextResponse.json({ configured: false, connected: false });

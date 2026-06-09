@@ -49,6 +49,12 @@ export function getSmartleadMode(): { isDryRun: boolean; isConfigured: boolean }
   return { isDryRun, isConfigured };
 }
 
+/** Async version — DB settings take priority over env (use this for accuracy). */
+export async function getSmartleadModeAsync(): Promise<{ isDryRun: boolean; isConfigured: boolean }> {
+  const s = await getSettings();
+  return { isDryRun: s.smartleadDryRun, isConfigured: !!s.smartleadApiKey };
+}
+
 // ── Request / Response types ──────────────────────────────────────────
 
 export interface SmartleadLeadPayload {

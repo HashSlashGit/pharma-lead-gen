@@ -53,7 +53,21 @@
       "Bash(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\Zuhayr\\\\pharma-lead-gen\\\\src\\\\app\\\\api\\\\auth\\\\login\")",
       "Bash(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\Zuhayr\\\\pharma-lead-gen\\\\src\\\\app\\\\api\\\\auth\\\\logout\")",
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(mkdir -p \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/users/[id]\")",
+      "Bash(mkdir -p \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/users/[id]/reset-password\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('dependencies',{}\\).get\\('next','?'\\)\\)\")",
+      "Bash(grep -r \"webhook\" .env.local .env.production .env.example)",
+      "Bash(grep -r \"WEBHOOK\" .env.local .env.production)",
+      "Bash(find src/lib/models -name \"*[Ww]ebhook*\" -o -name \"*webhook*\")",
+      "Bash(find src/ -name \"*webhook*\" -type f)",
+      "Bash(grep -v \"^$\")",
+      "Bash(grep -v \"comment\\\\|//\")",
+      "Bash(npx tsx *)",
+      "Bash(python3 /tmp/write_readme.py)",
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\Zuhayr\\\\pharma-lead-gen\\\\README.md\"\\).Count)"
     ]
   }
 }

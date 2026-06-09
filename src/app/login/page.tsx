@@ -2,16 +2,16 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Activity, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { Activity, Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Redirect if already authenticated
   useEffect(() => {
     const from = searchParams.get('from') ?? '/dashboard';
     fetch('/api/dashboard/stats', { method: 'HEAD' }).then((r) => {
@@ -29,7 +29,10 @@ function LoginForm() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({
+          email: email.trim() || undefined,
+          password,
+        }),
       });
       const data = await res.json() as { success?: boolean; error?: string };
 
@@ -50,6 +53,25 @@ function LoginForm() {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          Email
+        </label>
+        <div className="relative">
+          <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoFocus
+            autoComplete="email"
+            className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+            disabled={submitting}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
           Password
         </label>
         <div className="relative">
@@ -59,7 +81,7 @@ function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter password"
-            autoFocus
+            autoComplete="current-password"
             className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
             disabled={submitting}
           />
@@ -92,7 +114,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        {/* Brand */}
         <div className="flex items-center justify-center gap-2.5 mb-8">
           <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center">
             <Activity size={18} className="text-white" />
@@ -103,7 +124,7 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8">
           <div className="mb-6">
             <h1 className="text-xl font-bold text-slate-800 text-center">Sign in</h1>
-            <p className="text-slate-500 text-sm text-center mt-1">Enter your access password to continue</p>
+            <p className="text-slate-500 text-sm text-center mt-1">Enter your credentials to continue</p>
           </div>
 
           <Suspense fallback={
@@ -117,7 +138,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          PharmaLeads · Internal access only
+          PharmaLeads · Authorized access only
         </p>
       </div>
     </div>

@@ -134,12 +134,13 @@ export interface DashboardStats {
   unhandledReplies: number;
   pendingFollowUpDrafts: number;
   gmailRepliesToday?: number;
-  webhookRepliesToday?: number;
   rejectedLeads: number;
   needsReviewLeads: number;
   pricingReplies: number;
   interestedReplies: number;
   notInterestedReplies: number;
+  productCount: number;
+  campaignCount: number;
   lastUpdated?: string;
 }
 

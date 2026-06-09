@@ -7,7 +7,9 @@ import EmailLog from '@/lib/models/EmailLog';
 import Reply from '@/lib/models/Reply';
 import ClaudeUsageLog from '@/lib/models/ClaudeUsageLog';
 import NoReplyLead from '@/lib/models/NoReplyLead';
-import { getSmartleadMode } from '@/lib/services/smartlead';
+import { getSmartleadModeAsync } from '@/lib/services/smartlead';
+import Product from '@/lib/models/Product';
+import Campaign from '@/lib/models/Campaign';
 
 // Takes a factory fn so synchronous throws during query creation are also caught.
 async function safeStat<T>(name: string, fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -44,7 +46,7 @@ export async function GET() {
 
     const now = new Date();
 
-    const { isDryRun, isConfigured } = getSmartleadMode();
+    const { isDryRun, isConfigured } = await getSmartleadModeAsync();
 
     const [
       totalLeads,
@@ -69,12 +71,13 @@ export async function GET() {
       unhandledReplies,
       pendingFollowUpDrafts,
       gmailRepliesToday,
-      webhookRepliesToday,
       rejectedLeads,
       needsReviewLeads,
       pricingReplies,
       interestedReplies,
       notInterestedReplies,
+      productCount,
+      campaignCount,
     ] = await Promise.all([
       safeStat('totalLeads', () => Lead.countDocuments(), 0),
       safeStat('qualifiedLeads', () => Lead.countDocuments({ status: 'qualified' }), 0),
@@ -112,12 +115,13 @@ export async function GET() {
       safeStat('unhandledReplies', () => Reply.countDocuments({ needsApproval: true, status: 'pending' }), 0),
       safeStat('pendingFollowUpDrafts', () => EmailLog.countDocuments({ type: 'follow_up', status: 'pending' }), 0),
       safeStat('gmailRepliesToday', () => Reply.countDocuments({ source: 'gmail', createdAt: { $gte: todayStart } }), 0),
-      safeStat('webhookRepliesToday', () => Reply.countDocuments({ source: 'webhook', createdAt: { $gte: todayStart } }), 0),
       safeStat('rejectedLeads', () => Lead.countDocuments({ status: { $in: ['rejected', 'do_not_contact'] as ('rejected' | 'do_not_contact')[] } }), 0),
       safeStat('needsReviewLeads', () => Lead.countDocuments({ status: 'needs_review' }), 0),
       safeStat('pricingReplies', () => Reply.countDocuments({ classification: 'pricing_query' }), 0),
       safeStat('interestedReplies', () => Reply.countDocuments({ classification: 'interested' }), 0),
       safeStat('notInterestedReplies', () => Reply.countDocuments({ classification: { $in: ['not_interested', 'do_not_contact'] } }), 0),
+      safeStat('productCount', () => Product.countDocuments(), 0),
+      safeStat('campaignCount', () => Campaign.countDocuments(), 0),
     ]);
 
     console.log('[dashboard/stats] all queries complete');
@@ -149,12 +153,13 @@ export async function GET() {
       unhandledReplies,
       pendingFollowUpDrafts,
       gmailRepliesToday,
-      webhookRepliesToday,
       rejectedLeads,
       needsReviewLeads,
       pricingReplies,
       interestedReplies,
       notInterestedReplies,
+      productCount,
+      campaignCount,
       lastUpdated: new Date().toISOString(),
     });
   } catch (err) {

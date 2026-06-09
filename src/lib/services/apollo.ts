@@ -93,8 +93,7 @@ export function normalizeApolloLead(person: ApolloPersonRaw): NormalizedApolloLe
 export async function searchApolloLeads(params: ApolloSearchParams): Promise<ApolloPersonRaw[]> {
   const { apolloApiKey: apiKey } = await getSettings();
   if (!apiKey) {
-    console.warn('[Apollo] Apollo API key not configured — returning empty results');
-    return [];
+    throw new Error('Apollo API key is not configured. Add it in Settings → Integrations.');
   }
 
   const limit = Math.min(params.limit ?? 10, 50);

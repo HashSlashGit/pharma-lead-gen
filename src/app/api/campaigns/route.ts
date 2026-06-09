@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
 import Campaign from '@/lib/models/Campaign';
+import { writeAuditLog } from '@/lib/utils/auditLog';
+import { getRequestActor } from '@/lib/utils/requestActor';
 import CampaignLead from '@/lib/models/CampaignLead';
 import EmailLog from '@/lib/models/EmailLog';
 import Reply from '@/lib/models/Reply';
@@ -134,6 +136,13 @@ export async function POST(req: NextRequest) {
     }
 
     const campaign = await Campaign.create(parsed.data);
+    const actor = await getRequestActor(req);
+    void writeAuditLog({
+      action: 'campaign_created',
+      ...actor,
+      targetId: String(campaign._id),
+      targetLabel: parsed.data.name,
+    });
     return NextResponse.json({ campaign }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/campaigns]', err);

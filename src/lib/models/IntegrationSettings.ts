@@ -12,6 +12,7 @@ export interface IIntegrationSettings extends Document {
   smartleadFromName?: string;
   smartleadDryRun?: boolean;
 
+
   // Apollo B2B contacts
   apolloApiKey?: EncryptedField;
   apolloMaxResults?: number;
@@ -34,6 +35,11 @@ export interface IIntegrationSettings extends Document {
   // App
   appUrl?: string;
 
+  // Google OAuth (Gmail sync)
+  googleClientId?: EncryptedField;
+  googleClientSecret?: EncryptedField;
+  googleRedirectUri?: string;
+
   updatedAt: Date;
   createdAt: Date;
 }
@@ -50,7 +56,7 @@ const IntegrationSettingsSchema = new Schema<IIntegrationSettings>(
     smartleadCampaignId:  { type: String },
     smartleadFromEmail:   { type: String },
     smartleadFromName:    { type: String },
-    smartleadDryRun:      { type: Boolean },
+    smartleadDryRun:          { type: Boolean },
     apolloApiKey:         EncryptedFieldSchema,
     apolloMaxResults:     { type: Number },
     apifyToken:           EncryptedFieldSchema,
@@ -65,6 +71,9 @@ const IntegrationSettingsSchema = new Schema<IIntegrationSettings>(
     mailboxPassword:      EncryptedFieldSchema,
     mailboxLookbackDays:  { type: Number },
     appUrl:               { type: String },
+    googleClientId:       EncryptedFieldSchema,
+    googleClientSecret:   EncryptedFieldSchema,
+    googleRedirectUri:    { type: String },
   },
   { timestamps: true }
 );

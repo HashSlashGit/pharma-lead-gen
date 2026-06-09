@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
 import mongoose from 'mongoose';
+import { getSettings } from '@/lib/services/settingsCache';
 
 function getSafeHost(uri: string): string {
   try {
@@ -51,6 +52,8 @@ export async function GET() {
     }
   }
 
+  const s = await getSettings();
+
   return NextResponse.json({
     mongoUriSet,
     mode,
@@ -60,18 +63,18 @@ export async function GET() {
     ...(errorName !== undefined ? { errorName } : {}),
     ...(errorCode !== undefined ? { errorCode } : {}),
     ...(message !== undefined ? { message } : {}),
-    claude: process.env.CLAUDE_API_KEY ? 'configured' : 'missing',
-    apollo: process.env.APOLLO_API_KEY ? 'configured' : 'missing',
-    apify: (process.env.APIFY_API_TOKEN ?? process.env.APIFY_TOKEN) ? 'configured' : 'missing',
+    claude: s.claudeApiKey ? 'configured' : 'missing',
+    apollo: s.apolloApiKey ? 'configured' : 'missing',
+    apify: s.apifyToken ? 'configured' : 'missing',
     smartlead: {
-      configured: !!process.env.SMARTLEAD_API_KEY,
-      dryRun: process.env.SMARTLEAD_DRY_RUN !== 'false',
-      campaignIdPresent: !!process.env.SMARTLEAD_CAMPAIGN_ID,
+      configured: !!s.smartleadApiKey,
+      dryRun: s.smartleadDryRun,
+      campaignIdPresent: !!s.smartleadCampaignId,
     },
     mailbox: {
-      enabled: process.env.MAILBOX_SYNC_ENABLED === 'true',
-      configured: !!(process.env.MAILBOX_IMAP_HOST && process.env.MAILBOX_USER && process.env.MAILBOX_APP_PASSWORD),
+      enabled: s.mailboxEnabled,
+      configured: !!(s.mailboxImapHost && s.mailboxUser && s.mailboxPassword),
     },
-    websiteEnrichment: process.env.APIFY_WEBSITE_ENRICHMENT_ENABLED === 'true',
+    websiteEnrichment: s.apifyWebsiteEnrichment,
   });
 }

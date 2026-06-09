@@ -30,7 +30,6 @@ interface ProductionCheckData {
     smartleadApiKey: boolean;
     smartleadCampaignId: boolean;
     devRoutesBlocked: boolean;
-    webhookRoutePresent: boolean;
   };
   safety: {
     dryRunEnabled: boolean;

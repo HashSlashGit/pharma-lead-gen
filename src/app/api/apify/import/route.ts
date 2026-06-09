@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { connectDB } from '@/lib/db/mongoose';
 import Lead from '@/lib/models/Lead';
 import { scoreGoogleMapsLead } from '@/lib/utils/scoreLead';
+import { writeAuditLog } from '@/lib/utils/auditLog';
+import { getRequestActor } from '@/lib/utils/requestActor';
 
 const LeadItemSchema = z.object({
   companyName: z.string().min(1),
@@ -34,7 +36,7 @@ function stripWebsite(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = ImportSchema.safeParse(body);
@@ -149,6 +151,15 @@ export async function POST(req: Request) {
         imported = e.insertedDocs?.length ?? 0;
         if (e.message) errors.push(`Partial insert: ${e.message}`);
       }
+    }
+
+    if (imported > 0) {
+      const actor = await getRequestActor(req);
+      void writeAuditLog({
+        action: 'lead_imported',
+        ...actor,
+        meta: { source: 'apify', imported, skipped, total: leads.length },
+      });
     }
 
     return NextResponse.json({ imported, skipped, errors, total: leads.length });

@@ -4,6 +4,8 @@
  * No tokens are ever logged or returned to the browser.
  */
 
+import { getSettings } from '@/lib/services/settingsCache';
+
 export interface GmailReply {
   gmailMessageId: string;
   gmailThreadId: string;
@@ -94,12 +96,13 @@ function parseSender(fromHeader: string): { email: string; name: string } {
 
 // ── Public functions ──────────────────────────────────────────────────────────
 
-export function getGmailOAuthUrl(): string {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+export async function getGmailOAuthUrl(): Promise<string> {
+  const s = await getSettings();
+  const clientId = s.googleClientId;
+  const redirectUri = s.googleRedirectUri;
 
   if (!clientId || !redirectUri) {
-    throw new Error('GOOGLE_CLIENT_ID and GOOGLE_REDIRECT_URI must be configured');
+    throw new Error('Google OAuth credentials not configured. Add Client ID and Redirect URI in Settings → Integrations.');
   }
 
   const params = new URLSearchParams({
@@ -120,9 +123,14 @@ export async function exchangeCodeForTokens(code: string): Promise<{
   tokenExpiry: Date;
   email: string;
 }> {
-  const clientId = process.env.GOOGLE_CLIENT_ID!;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI!;
+  const s = await getSettings();
+  const clientId = s.googleClientId;
+  const clientSecret = s.googleClientSecret;
+  const redirectUri = s.googleRedirectUri;
+
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error('Google OAuth credentials not configured. Add them in Settings → Integrations.');
+  }
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -171,8 +179,13 @@ export async function exchangeCodeForTokens(code: string): Promise<{
 export async function refreshGmailAccessToken(
   account: { refreshToken: string; email: string }
 ): Promise<{ accessToken: string; tokenExpiry: Date }> {
-  const clientId = process.env.GOOGLE_CLIENT_ID!;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
+  const s = await getSettings();
+  const clientId = s.googleClientId;
+  const clientSecret = s.googleClientSecret;
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Google OAuth credentials not configured. Add them in Settings → Integrations.');
+  }
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',

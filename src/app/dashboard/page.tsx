@@ -23,6 +23,8 @@ import {
   FileCheck,
   AlertTriangle,
   RefreshCw,
+  Package,
+  Megaphone,
 } from 'lucide-react';
 import { DashboardStats } from '@/types';
 
@@ -210,6 +212,15 @@ export default function DashboardPage() {
               {!stats.smartleadConfigured && 'Not configured — set SMARTLEAD_API_KEY to enable sending.'}
               {stats.smartleadConfigured && stats.smartleadDryRun && 'Dry-run mode — emails validated but not sent. Set SMARTLEAD_DRY_RUN=false to go live.'}
               {stats.smartleadConfigured && !stats.smartleadDryRun && 'Live mode — emails are being sent via Smartlead.'}
+            </div>
+          </div>
+
+          {/* Management */}
+          <div>
+            <SectionLabel label="Management" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard title="Products" value={stats.productCount} icon={Package} color="slate" />
+              <StatCard title="Campaigns" value={stats.campaignCount} icon={Megaphone} color="blue" />
             </div>
           </div>
 

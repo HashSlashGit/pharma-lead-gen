@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { writeAuditLog } from '@/lib/utils/auditLog';
+import { getRequestActor } from '@/lib/utils/requestActor';
 import { connectDB } from '@/lib/db/mongoose';
 import CampaignLead from '@/lib/models/CampaignLead';
 import Campaign from '@/lib/models/Campaign';
@@ -195,6 +197,16 @@ export async function POST(req: NextRequest) {
         results.push({ leadId, email: lead.email, status: 'failed', error: result.message });
         failed++;
       }
+    }
+
+    if (sent > 0) {
+      const actor = await getRequestActor(req);
+      void writeAuditLog({
+        action: 'bulk_email_sent',
+        ...actor,
+        targetId: campaignId,
+        meta: { sent, failed, skipped, total: validLeadIds.length },
+      });
     }
 
     return NextResponse.json({ sent, failed, skipped, total: validLeadIds.length, results });

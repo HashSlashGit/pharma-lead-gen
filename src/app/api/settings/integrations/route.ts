@@ -6,6 +6,8 @@ import IntegrationSettings from '@/lib/models/IntegrationSettings';
 import { encrypt, maskSecret, decrypt, isEncryptionConfigured } from '@/lib/utils/encryption';
 import type { EncryptedField } from '@/lib/utils/encryption';
 import { invalidateSettingsCache } from '@/lib/services/settingsCache';
+import { writeAuditLog } from '@/lib/utils/auditLog';
+import { getRequestActor } from '@/lib/utils/requestActor';
 import type { IIntegrationSettings } from '@/lib/models/IntegrationSettings';
 
 function safeDecrypt(field: EncryptedField | undefined): string | undefined {
@@ -59,6 +61,11 @@ export async function GET() {
         passwordConfigured: !!(safeDecrypt(doc?.mailboxPassword) || process.env.MAILBOX_APP_PASSWORD),
       },
       appUrl: doc?.appUrl || process.env.APP_PUBLIC_URL || process.env.APP_URL || null,
+      google: {
+        clientId:     maskedOrConfigured(doc?.googleClientId,     process.env.GOOGLE_CLIENT_ID),
+        clientSecret: maskedOrConfigured(doc?.googleClientSecret, process.env.GOOGLE_CLIENT_SECRET),
+        redirectUri:  doc?.googleRedirectUri || process.env.GOOGLE_REDIRECT_URI || null,
+      },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -98,12 +105,17 @@ export async function POST(req: NextRequest) {
     const encryptedApollo    = maybeEncrypt(body.apolloApiKey);
     const encryptedApify     = maybeEncrypt(body.apifyToken);
     const encryptedMailbox   = maybeEncrypt(body.mailboxPassword);
+    const encryptedGoogleClientId     = maybeEncrypt(body.googleClientId);
+    const encryptedGoogleClientSecret = maybeEncrypt(body.googleClientSecret);
 
     if (encryptedClaude)    update.claudeApiKey    = encryptedClaude;
     if (encryptedSmartlead) update.smartleadApiKey  = encryptedSmartlead;
     if (encryptedApollo)    update.apolloApiKey     = encryptedApollo;
     if (encryptedApify)     update.apifyToken       = encryptedApify;
     if (encryptedMailbox)   update.mailboxPassword  = encryptedMailbox;
+    if (encryptedGoogleClientId)     update.googleClientId     = encryptedGoogleClientId;
+    if (encryptedGoogleClientSecret) update.googleClientSecret = encryptedGoogleClientSecret;
+    if (typeof body.googleRedirectUri === 'string') update.googleRedirectUri = (body.googleRedirectUri as string).trim();
 
     // Non-sensitive fields — store as-is
     if (typeof body.smartleadCampaignId === 'string') update.smartleadCampaignId = body.smartleadCampaignId.trim();
@@ -138,6 +150,13 @@ export async function POST(req: NextRequest) {
 
     // Bust the in-process settings cache so next request gets fresh values
     invalidateSettingsCache();
+
+    const actor = await getRequestActor(req);
+    void writeAuditLog({
+      action: 'settings_changed',
+      ...actor,
+      meta: { fields: Object.keys(update) },
+    });
 
     return NextResponse.json({ success: true, updated: Object.keys(update) });
   } catch (err) {

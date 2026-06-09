@@ -178,6 +178,11 @@ interface IntegrationData {
     passwordConfigured: boolean;
   };
   appUrl: string | null;
+  google: {
+    clientId: IntegrationInfo;
+    clientSecret: IntegrationInfo;
+    redirectUri: string | null;
+  };
 }
 
 // ─── Masked secret input ──────────────────────────────────────────────────────
@@ -340,6 +345,7 @@ export default function SettingsPage() {
   const [smartleadFrom, setSmartleadFrom]       = useState('');
   const [smartleadName, setSmartleadName]       = useState('');
   const [smartleadDryRun, setSmartleadDryRun]   = useState(true);
+
   const [apolloKey, setApolloKey]               = useState('');
   const [apolloMax, setApolloMax]               = useState('25');
   const [apifyToken, setApifyToken]             = useState('');
@@ -354,6 +360,9 @@ export default function SettingsPage() {
   const [mailboxPass, setMailboxPass]           = useState('');
   const [mailboxDays, setMailboxDays]           = useState('14');
   const [appUrl, setAppUrl]                     = useState('');
+  const [googleClientId, setGoogleClientId]         = useState('');
+  const [googleClientSecret, setGoogleClientSecret] = useState('');
+  const [googleRedirectUri, setGoogleRedirectUri]   = useState('');
 
   // Per-service saving state
   const [saving, setSaving]         = useState<Record<string, boolean>>({});
@@ -376,6 +385,7 @@ export default function SettingsPage() {
     setMailboxUser(data.mailbox.user ?? '');
     setMailboxDays(String(data.mailbox.lookbackDays));
     setAppUrl(data.appUrl ?? '');
+    setGoogleRedirectUri(data.google?.redirectUri ?? '');
   };
 
   // Called by Refresh button and after saves — setIntLoading(true) is fine here
@@ -699,6 +709,27 @@ export default function SettingsPage() {
                     className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
                   Use SSL/TLS (recommended)
                 </label>
+              </IntegrationCard>
+
+              {/* Google OAuth */}
+              <IntegrationCard title="Google OAuth (Gmail)" icon={Inbox} iconBg="bg-blue-50 text-blue-600"
+                configured={!!(integrations?.google?.clientId.configured && integrations?.google?.clientSecret.configured && integrations?.google?.redirectUri)}
+                masked={integrations?.google?.clientId.configured ? `Client ID: ${integrations.google.clientId.masked}` : null}
+                onSave={() => saveSection('google', {
+                  googleClientId,
+                  googleClientSecret,
+                  googleRedirectUri,
+                })}
+                saving={!!saving['google']} saveResult={saveResult['google'] ?? null}>
+                <p className="text-xs text-slate-500">Go to <strong>console.cloud.google.com</strong> → APIs &amp; Services → Credentials → Create OAuth 2.0 Client ID (Web application). Add <code className="bg-slate-100 px-1 rounded">/api/gmail/callback</code> as an authorised redirect URI.</p>
+                <SecretInput label="Google Client ID" placeholder="xxx.apps.googleusercontent.com"
+                  value={googleClientId} onChange={setGoogleClientId}
+                  hint={integrations?.google?.clientId.configured ? `Currently configured (${integrations.google.clientId.masked})` : undefined} />
+                <SecretInput label="Google Client Secret" placeholder="GOCSPX-…"
+                  value={googleClientSecret} onChange={setGoogleClientSecret}
+                  hint={integrations?.google?.clientSecret.configured ? `Currently configured (${integrations.google.clientSecret.masked})` : undefined} />
+                <FieldInput label="Redirect URI" placeholder="https://your-app.vercel.app/api/gmail/callback"
+                  value={googleRedirectUri} onChange={setGoogleRedirectUri} />
               </IntegrationCard>
 
               {/* App URL */}
@@ -1039,43 +1070,32 @@ export default function SettingsPage() {
 
                 {/* Setup instructions when not configured */}
                 {gmailStatus && !gmailStatus.configured && (
-                  <>
-                    <div className="flex flex-wrap gap-1">
-                      {['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'].map((v) => (
-                        <code key={v} className="text-xs bg-slate-100 border border-slate-200 text-slate-600 px-2 py-0.5 rounded">
-                          {v}
-                        </code>
-                      ))}
-                    </div>
-                    <ol className="space-y-1 text-xs text-slate-500 list-decimal list-inside">
-                      <li>Go to console.cloud.google.com and create or select a project.</li>
-                      <li>Enable the Gmail API under APIs & Services.</li>
-                      <li>Create OAuth 2.0 credentials — type: Web application.</li>
-                      <li>Add Authorised redirect URI: <code className="bg-slate-100 px-1 rounded">/api/gmail/callback</code></li>
-                      <li>Set the three env vars in .env.local and restart the dev server.</li>
-                      <li>Click Connect Gmail above.</li>
-                    </ol>
-                  </>
+                  <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                    <span>Add your Google OAuth credentials in the <strong>Google OAuth (Gmail)</strong> card above, then click <strong>Connect Gmail</strong>.</span>
+                  </div>
                 )}
               </div>
             </div>
           </div>
         ) : null}
 
-        {/* Production checklist link */}
-        <div className="mt-4">
-          <Link
-            href="/production-checklist"
-            className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl px-5 py-4 text-white"
-          >
-            <Rocket size={18} className="text-emerald-400 shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold text-sm">Production Checklist</p>
-              <p className="text-xs text-slate-400 mt-0.5">Step-by-step readiness check before enabling live sends.</p>
-            </div>
-            <span className="text-slate-400 text-xs">→</span>
-          </Link>
-        </div>
+        {/* Production checklist link — dev/staging only */}
+        {process.env.NODE_ENV !== 'production' && (
+          <div className="mt-4">
+            <Link
+              href="/production-checklist"
+              className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl px-5 py-4 text-white"
+            >
+              <Rocket size={18} className="text-emerald-400 shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold text-sm">Production Checklist</p>
+                <p className="text-xs text-slate-400 mt-0.5">Step-by-step readiness check before enabling live sends.</p>
+              </div>
+              <span className="text-slate-400 text-xs">→</span>
+            </Link>
+          </div>
+        )}
 
         {/* Env var reference block */}
         <div className="mt-6 bg-slate-800 rounded-xl p-5 text-sm">
@@ -1084,27 +1104,20 @@ export default function SettingsPage() {
           <pre className="text-emerald-300 text-xs overflow-x-auto leading-loose">
 {`# ── Required ─────────────────────────────────────────────
 MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/pharma-leads
+JWT_SECRET=<64-char-hex>
+APP_ENCRYPTION_KEY=<64-char-hex>
 
-# ── Claude AI (optional) ─────────────────────────────────
-CLAUDE_API_KEY=sk-ant-...
+# ── Admin account ─────────────────────────────────────────
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=<strong-password>
 
-# ── Smartlead (email sending) ────────────────────────────
-SMARTLEAD_API_KEY=
-SMARTLEAD_DRY_RUN=true
-SMARTLEAD_CAMPAIGN_ID=
+# ── App URL (webhook callbacks) ───────────────────────────
+APP_URL=https://your-app.vercel.app
 
-# ── Apollo.io (B2B contact discovery) ────────────────────
-APOLLO_API_KEY=
-
-# ── Apify (Google Maps scraping) ─────────────────────────
-APIFY_API_TOKEN=
-APIFY_GOOGLE_MAPS_ACTOR_ID=
-APIFY_WEBSITE_ENRICHMENT_ENABLED=false
-
-# ── Gmail Inbox Sync (backup reply source) ────────────────
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=http://localhost:3000/api/gmail/callback`}
+# ── All other credentials ─────────────────────────────────
+# Configure Claude, Smartlead, Apollo, Apify, Mailbox, and
+# Google OAuth via Settings → Integrations in the UI.
+# They are encrypted and stored in MongoDB — no env vars needed.`}
           </pre>
         </div>
 

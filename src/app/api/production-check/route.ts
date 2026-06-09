@@ -20,7 +20,6 @@ export async function GET() {
       smartleadApiKey: !!process.env.SMARTLEAD_API_KEY,
       smartleadCampaignId: !!process.env.SMARTLEAD_CAMPAIGN_ID,
       devRoutesBlocked: isProduction, // /api/dev/* return 403 in production
-      webhookRoutePresent: true, // static route always compiled in
     },
 
     // Safety flags — review before enabling live send

@@ -30,6 +30,9 @@ export interface ResolvedSettings {
   mailboxPassword?: string;
   mailboxLookbackDays: number;
   appUrl?: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  googleRedirectUri?: string;
 }
 
 let _cache: ResolvedSettings | null = null;
@@ -70,6 +73,9 @@ async function loadFromDB(): Promise<Partial<ResolvedSettings>> {
       mailboxPassword:       safeDecrypt(doc.mailboxPassword),
       mailboxLookbackDays:   doc.mailboxLookbackDays,
       appUrl:                doc.appUrl,
+      googleClientId:        safeDecrypt(doc.googleClientId),
+      googleClientSecret:    safeDecrypt(doc.googleClientSecret),
+      googleRedirectUri:     doc.googleRedirectUri,
     };
   } catch {
     // DB unavailable — fall through to env-only mode
@@ -104,6 +110,9 @@ export async function getSettings(): Promise<ResolvedSettings> {
     mailboxPassword: db.mailboxPassword || process.env.MAILBOX_APP_PASSWORD,
     mailboxLookbackDays: db.mailboxLookbackDays ?? (parseInt(process.env.MAILBOX_LOOKBACK_DAYS ?? '14', 10) || 14),
     appUrl: db.appUrl || process.env.APP_PUBLIC_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL,
+    googleClientId:     db.googleClientId     || process.env.GOOGLE_CLIENT_ID,
+    googleClientSecret: db.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET,
+    googleRedirectUri:  db.googleRedirectUri  || process.env.GOOGLE_REDIRECT_URI,
   };
 
   _cache = merged;

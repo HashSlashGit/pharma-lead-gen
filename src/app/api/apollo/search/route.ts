@@ -46,19 +46,16 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    if (!process.env.APOLLO_API_KEY) {
-      return NextResponse.json(
-        { error: 'Apollo API key not configured — set APOLLO_API_KEY in .env.local' },
-        { status: 401 }
-      );
-    }
-
     console.log(`[Apollo Search] keyword="${keyword}" country="${country}" title="${jobTitle}" limit=${limit}`);
 
     let rawPeople;
     try {
       rawPeople = await searchApolloLeads({ keyword, country, jobTitle, limit });
     } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('not configured')) {
+        return NextResponse.json({ error: msg }, { status: 401 });
+      }
       const status = (err as { response?: { status?: number } }).response?.status;
       const errRes = apolloStatusError(status);
       if (errRes) return errRes;

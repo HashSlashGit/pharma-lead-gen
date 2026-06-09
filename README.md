@@ -1,396 +1,322 @@
-# PharmaLeads MVP
+﻿# PharmaLeads - Setup and Integration Guide
 
-AI lead generation platform for pharmaceutical/healthcare organizations.
-
-## Stack
-
-- **Next.js 16** (App Router, TypeScript)
-- **MongoDB Atlas** (Mongoose)
-- **Tailwind CSS 4**
-- **Claude Haiku** — manual only, fully cost-controlled
-- **Smartlead** — outbound email sequencing
-- **Apollo.io** — B2B contact discovery
-- **Apify** — Google Maps scraping
+This guide walks you through getting PharmaLeads running and connecting every service it uses. No technical background required.
 
 ---
 
-## Final Launch Flow
+## What is PharmaLeads?
 
-```
-Local test → Dry run → Live send test → Deploy → Webhook setup → 10-lead pilot
-```
+PharmaLeads is a lead generation platform built for pharmaceutical outreach. It lets you:
 
-| Step | Action | Verified by |
-|---|---|---|
-| 1. Local test | `npm run dev`, seed data, walk QA checklist | `/testing-checklist` |
-| 2. Dry run | Set `SMARTLEAD_DRY_RUN=true`, send a test email | EmailLog shows `ready_to_send_test` |
-| 3. Live send test | Set `SMARTLEAD_DRY_RUN=false`, send to one real lead | EmailLog shows `sent`, check Smartlead |
-| 4. Deploy | Push to VPS, `pm2 start`, configure Nginx + SSL | App loads at `https://yourdomain.com` |
-| 5. Webhook setup | Paste webhook URL in Smartlead campaign settings | `/webhook-setup` shows public URL |
-| 6. 10-lead pilot | Import 10 real leads, run processor daily | Monitor Reply Inbox for responses |
-
-> Before step 6: remove sample data (`/dev-tools → Reset`) and verify `/production-checklist` is green.
+- **Find leads** from Google Maps (via Apify) and Apollo.io contact databases
+- **Send personalised outreach emails** via Smartlead
+- **Track replies** automatically from your inbox or Gmail
+- **Manage campaigns** with AI-assisted email personalisation (Claude AI)
 
 ---
 
-## Quick Start
+## Before You Start - What You Will Need
 
-```bash
-cp .env.local.example .env.local
-# Fill in MONGODB_URI at minimum
-npm install
-npm run dev
-```
+You will need accounts on the following services. All have free tiers or trials:
 
-Open [http://localhost:3000/dashboard](http://localhost:3000/dashboard).
-
----
-
-## Local Testing (Dev Tools)
-
-The app ships with a seeder and QA checklist so you can test the full pipeline without spending real API credits.
-
-### Seed sample data
-
-1. Start the dev server (`npm run dev`).
-2. Open **Dev Tools** in the sidebar (`/dev-tools`).
-3. Click **Seed sample data** — creates:
-   - 3 products (Paracetamol, Amoxicillin, Vitamin C)
-   - 1 campaign (Southeast Asia Pharma Outreach)
-   - 5 leads covering every status: `qualified`, `contacted`, `needs_review`, `no_response`, `warm`
-   - 4 email logs (2 pending drafts, 1 sent, 1 draft reply)
-   - 2 replies (1 with AI draft awaiting approval, 1 waiting for draft generation)
-   - 1 no-reply archived lead
-
-All sample records are tagged: leads use `source: 'sample'`; products and campaigns use a `[SAMPLE]` name prefix. **Real records are never touched by the seeder or reset.**
-
-### How sample data is identified (reset safety)
-
-| Collection | Marker |
+| Service | What it is for |
 |---|---|
-| Lead | `source === 'sample'` |
-| Product | `name` starts with `[SAMPLE]` |
-| Campaign | `name` starts with `[SAMPLE]` |
-| EmailLog | `leadId` in sample lead set |
-| Reply | `leadId` in sample lead set |
-| NoReplyLead | `leadId` in sample lead set |
-
-### Reset sample data
-
-Click **Reset sample data** on the Dev Tools page. The reset route cascades through all linked records in two phases: linked records first, then leads/products/campaigns. Idempotent — resetting an already-clean database returns `deleted: 0`.
-
-### Walk the full QA checklist
-
-Open `/testing-checklist` for a step-by-step guide covering all 17 features. Each item includes exact steps, a pass condition, and a direct link to the relevant page.
-
-### What to test before real sending
-
-1. Seed data, walk the QA checklist, reset.
-2. Set `SMARTLEAD_DRY_RUN=true`. Test the send flow on a real lead — verify `ready_to_send_test` status.
-3. Configure `SMARTLEAD_CAMPAIGN_ID`. Confirm Settings shows "No Campaign" is resolved.
-4. Only set `SMARTLEAD_DRY_RUN=false` when you've verified the full dry-run cycle.
+| **MongoDB Atlas** | Database to store your leads and settings |
+| **Smartlead** | Sending outreach emails at scale |
+| **Apollo.io** | Finding B2B contacts (pharmacists, buyers, etc.) |
+| **Apify** | Scraping Google Maps for local pharmacy leads |
+| **Anthropic (Claude)** | AI email personalisation (optional) |
+| **Google Cloud** | Gmail inbox sync (optional) |
 
 ---
 
-## Environment Variables
+## Step 1 - Copy the Environment File
 
-Copy `.env.local.example` to `.env.local` and fill in the values. Never commit `.env.local`.
+The app reads its configuration from a file called `.env.local`. A template already exists.
 
-### Required
+1. In the project folder, find the file named `.env.local.example`
+2. Make a copy of it and name the copy `.env.local`
+3. Open `.env.local` in any text editor (Notepad works fine)
 
-| Variable | Purpose |
-|---|---|
-| `MONGODB_URI` | MongoDB Atlas connection string (free M0 tier works) |
-
-### Email Sending (Smartlead)
-
-| Variable | Purpose |
-|---|---|
-| `SMARTLEAD_API_KEY` | Smartlead API key — get from Settings → API Key |
-| `SMARTLEAD_DRY_RUN` | `true` = validate + mark ready (no real send); `false` = live send |
-| `SMARTLEAD_CAMPAIGN_ID` | ID of the target Smartlead campaign |
-
-### AI Personalization (Claude — optional)
-
-| Variable | Purpose |
-|---|---|
-| `CLAUDE_API_KEY` | Only called when user manually clicks "Personalize with AI" or "Improve with AI" |
-
-### Lead Discovery (both optional)
-
-| Variable | Purpose |
-|---|---|
-| `APOLLO_API_KEY` | Enables `/apollo` B2B contact search |
-| `APIFY_API_TOKEN` | Enables `/apify` Google Maps scraping |
-| `APIFY_GOOGLE_MAPS_ACTOR_ID` | Actor override — default: `compass/crawler-google-places` |
-| `APIFY_WEBSITE_ENRICHMENT_ENABLED` | `false` by default — set `true` to enable contact-page scraping |
+You will fill this file in as you complete each section below.
 
 ---
 
-## First-Run Checklist
+## Step 2 - MongoDB (Database)
 
-Steps to complete before using the app in production:
+This is the only required step - nothing else works without it.
 
-1. **Set `MONGODB_URI`** — the app will not start without it. Create a free cluster at mongodb.com/atlas.
-2. **Set `SMARTLEAD_DRY_RUN=true`** and confirm the Test Send flow works end-to-end.
-3. **Create a campaign in Smartlead**, paste its ID into `SMARTLEAD_CAMPAIGN_ID`.
-4. **Import a handful of test leads** via CSV or Apollo to verify scoring and status transitions.
-5. **Optionally add `CLAUDE_API_KEY`** and test "Personalize with AI" on a qualified lead (score ≥ 70).
-6. **Switch `SMARTLEAD_DRY_RUN=false`** when ready to send real emails.
+1. Go to https://cloud.mongodb.com and create a free account
+2. Create a new **Project**, then inside it create a **Cluster** (choose the free M0 tier)
+3. When prompted, create a **database user** - save the username and password somewhere
+4. Click **Connect** on your cluster and choose **Connect your application**
+5. Copy the connection string. It looks like this:
 
-Open `/settings` in the app for a live health check of all services.
+        mongodb+srv://myuser:mypassword@cluster0.abc123.mongodb.net/
 
----
+6. Paste it into `.env.local`, replacing the placeholder:
 
-## Lead Scoring (Rule-Based — No AI)
+        MONGODB_URI=mongodb+srv://myuser:mypassword@cluster0.abc123.mongodb.net/pharma-leads?retryWrites=true&w=majority
 
-Scoring runs instantly on every lead import. No API calls.
+   Make sure `/pharma-leads` appears before the `?` - that names the database.
 
-| Signal | Points |
-|---|---|
-| Email present | +25 |
-| Website present | +20 |
-| Phone present | +10 |
-| Country present | +10 |
-| Pharma/health category keyword | +25 |
-| Source present | +10 |
-
-- **≥ 70** → `qualified`
-- **40–69** → `needs_review`
-- **< 40** → `low_priority`
+**Network access:** In MongoDB Atlas, go to **Network Access** and add your server IP address (or `0.0.0.0/0` to allow all IPs during testing).
 
 ---
 
-## Claude Usage — Cost Control
+## Step 3 - Create Your Admin Account
 
-Claude is **never** called automatically. It is only invoked when you manually click **"Personalize with AI"** on a lead detail page, subject to three server-side guards:
+The first person to log in becomes the admin. Set these two values in `.env.local`:
 
-1. Lead score must be ≥ 70 (qualified)
-2. Lead must have an email address
-3. Lead must not already be AI-processed
+    ADMIN_EMAIL=you@yourcompany.com
+    ADMIN_PASSWORD=ChooseAStrongPassword123!
 
-Every Claude call is logged in `ClaudeUsageLog` with token counts and estimated cost. The dashboard shows today's spend.
+These are only used to create your admin account on the **first login ever**. After that they can be left in place - they have no further effect once the account exists.
 
-**Claude is never called for:** duplicate checking, scoring, follow-up scheduling, CSV import, Apollo search, Apify scraping, or dashboard stats.
+You also need a secret key for login sessions. Generate any long random string (32+ characters) and set:
 
----
+    JWT_SECRET=paste-a-long-random-string-here
 
-## Apollo.io Integration
-
-**Page:** `/apollo`
-
-Searches Apollo.io for B2B contacts (purchasing managers, procurement officers, etc.) in the pharmaceutical and healthcare space.
-
-### Flow
-
-1. Enter keyword, country, and optional job title
-2. Click **Search Apollo** — fetches up to 50 contacts, no DB writes
-3. Preview table shows score, duplicate badges (email OR company+country match)
-4. Select rows and click **Import Selected**, or **Import All** (skips duplicates automatically)
-
-### Cost control
-
-- Max 50 results per search (hard-coded on server)
-- No auto-pagination
-- No background sync
-- No automatic enrichment
-- No Claude calls at any point
+**Tip:** Visit any random string generator and generate a 32+ character alphanumeric string.
 
 ---
 
-## Apify Google Maps Integration
+## Step 4 - Encryption Key (Required for Settings Page)
 
-**Page:** `/apify`
+API keys you enter through the in-app Settings page are stored encrypted in the database. You must provide an encryption key:
 
-Scrapes Google Maps for local pharmacies, clinics, distributors, and wholesalers using the `compass/crawler-google-places` Apify actor.
+    APP_ENCRYPTION_KEY=paste-a-32-character-random-string
 
-### Setup
+This must be **exactly 32 characters** long. Use letters and numbers only.
 
-1. Create an Apify account at [console.apify.com](https://console.apify.com)
-2. Copy your API token from **Settings → Integrations**
-3. Add to `.env.local`:
-   ```
-   APIFY_API_TOKEN=apify_api_...
-   ```
-4. The default actor (`compass/crawler-google-places`) runs without any additional setup
-
-### Flow
-
-1. Enter keyword (e.g. `pharmacy`), city (optional), and country
-2. Click **Search Google Maps** — triggers an Apify actor run (30–90 seconds)
-3. Preview table shows results with score, email, phone, website, Maps link
-4. Duplicate detection: email OR website OR company+country match
-5. Select and import; duplicates are skipped automatically
-
-### Cost control
-
-- Max 50 results per search (hard-coded on server)
-- No auto-pagination
-- No background scraping
-- No automatic enrichment
-- Website enrichment is **disabled by default** (`APIFY_WEBSITE_ENRICHMENT_ENABLED=false`)
-- No Claude calls at any point
-
-### Why Apify complements Apollo
-
-| | Apollo | Apify |
-|---|---|---|
-| Best for | Named B2B contacts, verified emails | Local businesses, clinics, pharmacies |
-| Data source | LinkedIn / professional networks | Google Maps |
-| Phone numbers | Sometimes | Usually |
-| Local businesses | Rare | Yes |
-| Email quality | High (verified) | Variable (scraped) |
+**Important:** Never change this key after you have saved settings through the UI. Changing it will make previously saved API keys unreadable.
 
 ---
 
-## Reply Management — Human-in-the-Loop Inbox
+## Step 5 - Smartlead (Email Sending)
 
-**Page:** `/replies`
+Smartlead sends your outreach emails.
 
-Centralized inbox for all inbound replies from leads. The system never auto-sends a reply — every AI draft requires a human to click **Approve & Send**.
+1. Log in at https://app.smartlead.ai
+2. Go to **Settings -> API Key** and copy your key
+3. Create a **Campaign** in Smartlead - the campaign ID is in the URL when you open it:
+   `https://app.smartlead.ai/app/campaigns/12345` - your ID is `12345`
+4. Note the **sender email address** configured as a mailbox in your Smartlead account
 
-### Reply lifecycle
+Set these in `.env.local`:
 
-```
-Webhook receives reply
-       ↓
-Keyword classifier runs (no Claude)
-       ↓
-Reply saved with classification + needsApproval flag
-       ↓
-Human opens Reply Inbox
-       ↓
-Human clicks "Generate AI Draft" (Claude Haiku — logged)
-       ↓
-Human reads draft, then clicks "Approve & Send" OR "Reject Draft"
-       ↓
-If approved: dispatched via Smartlead (dry-run or live)
-If rejected: draft discarded, can regenerate
-```
+    SMARTLEAD_API_KEY=your-api-key-here
+    SMARTLEAD_CAMPAIGN_ID=12345
+    SMARTLEAD_FROM_EMAIL=youremail@yourcompany.com
+    SMARTLEAD_FROM_NAME=Your Name
+    SMARTLEAD_DRY_RUN=true
 
-### Classifications
-
-| Classification | Meaning | AI Draft Allowed |
-|---|---|---|
-| `interested` | Lead expressed interest | Yes |
-| `pricing_query` | Asked about pricing/MOQ | Yes |
-| `certificate_query` | Asked about certifications | Yes |
-| `shipping_query` | Asked about delivery/freight | Yes |
-| `unclassified` | Rule classifier couldn't determine | Yes |
-| `not_interested` | Lead is not interested | No |
-
-### Claude usage restrictions for reply drafts
-
-- Not called on webhook receipt — classifier is keyword-only
-- Not called during page load or dashboard refresh
-- Only called when user manually clicks "Generate AI Draft"
-- Blocked entirely for `not_interested` classification
-- Draft stored in `EmailLog` as `type: 'reply'`, `status: 'pending'`
-- Sending blocked until user explicitly clicks "Approve & Send"
-- Every call logged to `ClaudeUsageLog` with token count and cost
-
-### Why replies are never auto-sent
-
-Pharmaceutical outreach is regulated territory. Auto-sending AI-generated content risks:
-- Making unsupported medical claims
-- Sending to unsubscribed contacts
-- Misrepresenting pricing or certifications
-
-The human approval step is a hard architectural constraint, not a configuration option.
+**Dry run mode:** Leave `SMARTLEAD_DRY_RUN=true` while testing. Emails will be validated but **not actually sent**. Change to `false` only when you are ready to send real emails.
 
 ---
 
-## Follow-Up Sequence
+## Step 6 - Apollo.io (Contact Discovery)
 
-```
-Day 0 → Initial Email
-Day 1 → Follow-Up 1
-Day 3 → Follow-Up 2
-Day 7 → Final Follow-Up
-No reply → Archived to NoReplyLead
-```
+Apollo lets you search for contacts like pharmacy buyers, procurement managers, etc.
 
-Scheduling is **fully rule-based** — zero Claude credits. Click **Run Follow-Up Processor** on the dashboard to process due follow-ups.
+1. Log in at https://app.apollo.io
+2. Go to **Settings -> Integrations -> API** and copy your API key
 
-Stop conditions: replied, bounced, unsubscribed, not_interested, do_not_contact, no_response.
+Set it in `.env.local`:
+
+    APOLLO_API_KEY=your-apollo-api-key
 
 ---
 
-## Production Deployment
+## Step 7 - Apify (Google Maps Scraping)
 
-See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full guide. Summary:
+Apify scrapes Google Maps to find local pharmacies, clinics, and hospitals.
 
-### Local production test (verify before pushing to a server)
+1. Create an account at https://console.apify.com
+2. Go to **Account -> Integrations** and copy your API token
 
-```bash
-npm run typecheck   # must be clean
-npm run build
-npm start           # http://localhost:3000
-```
+Set it in `.env.local`:
 
-Open `/settings` to verify health, `/production-checklist` to walk the readiness checklist.
+    APIFY_API_TOKEN=your-apify-token
 
-### VPS deployment (Ubuntu 22.04)
+**Optional - Website Email Enrichment:**
 
-```bash
-# On the server:
-git clone https://github.com/YOUR_ORG/pharma-lead-gen.git /var/www/pharma-lead-gen
-cd /var/www/pharma-lead-gen
-# Create .env.production with all env vars
-npm install
-npm run build
-npm install -g pm2
-pm2 start npm --name "pharma-leads" -- start
-pm2 save && pm2 startup
-```
+When enabled, the app will visit each business website and try to find a public contact email (useful for leads without an email listed on Google Maps):
 
-Then set up nginx as a reverse proxy to port 3000 and add SSL via Certbot.
-Full nginx config and Certbot commands are in DEPLOYMENT.md.
+    APIFY_WEBSITE_ENRICHMENT_ENABLED=false
 
-### Before enabling live email sends
-
-```
-SMARTLEAD_DRY_RUN=true  ← keep this until ALL steps below are verified
-```
-
-1. MongoDB Atlas IP whitelist includes your VPS IP
-2. `SMARTLEAD_CAMPAIGN_ID` is set to a real Smartlead campaign
-3. Webhook URL (`/api/webhooks/smartlead/reply`) is registered in Smartlead
-4. A full dry-run test send cycle completed — EmailLog shows `ready_to_send_test`
-5. Sample data removed (`/dev-tools` → Reset)
-6. `/production-checklist` shows all automated checks green
-
-**Only then:** set `SMARTLEAD_DRY_RUN=false` and restart PM2.
+Change to `true` to enable. This uses your server internet connection, not Apify credits.
 
 ---
 
-## API Routes
+## Step 8 - Claude AI (Optional - Email Personalisation)
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/api/dashboard/stats` | Dashboard metrics |
-| GET/POST | `/api/leads` | List / create leads |
-| GET/PATCH | `/api/leads/[id]` | Get / update lead |
-| POST | `/api/leads/[id]/personalize` | Manual AI email (guarded) |
-| POST | `/api/leads/import` | CSV import |
-| GET | `/api/leads/no-reply` | Archived no-reply leads |
-| POST | `/api/follow-ups/process` | Run follow-up scheduler |
-| GET | `/api/email-logs` | List email logs |
-| POST | `/api/email-logs/[id]/send` | Send / dispatch email |
-| POST | `/api/webhooks/smartlead/reply` | Inbound reply webhook |
-| POST | `/api/apollo/search` | Apollo search (no DB write) |
-| POST | `/api/apollo/import` | Import Apollo results |
-| POST | `/api/apify/maps-search` | Google Maps search (no DB write) |
-| POST | `/api/apify/import` | Import Apify results |
-| POST | `/api/apify/enrich-website` | Website enrichment placeholder |
-| GET | `/api/config` | Non-sensitive feature flags (keys never exposed) |
-| GET | `/api/health` | Live system health — env var presence + MongoDB ping |
-| GET/POST | `/api/replies` | Reply inbox list |
-| GET/PATCH | `/api/replies/[id]` | Reply detail / status update |
-| POST | `/api/replies/[id]/generate-draft` | Generate AI reply draft (manual trigger) |
-| POST | `/api/replies/[id]/approve-send` | Approve and dispatch reply via Smartlead |
-| POST | `/api/replies/[id]/reject-draft` | Reject or mark handled |
-| POST | `/api/email-logs/manual-draft` | Save manually composed email as draft |
-| POST | `/api/email-logs/[id]/improve-with-ai` | Improve draft with Claude (manual trigger) |
-| GET/POST | `/api/products` | Products CRUD |
-| GET/POST | `/api/campaigns` | Campaigns CRUD |
+Claude AI writes personalised email openers for high-scoring leads. It only runs when you manually click "Personalise with AI" on a lead - never automatically.
+
+1. Sign up at https://console.anthropic.com
+2. Go to **API Keys** and create a new key
+
+Set it in `.env.local`:
+
+    CLAUDE_API_KEY=sk-ant-api03-...
+
+If you skip this, everything else still works - you just will not have AI personalisation.
+
+---
+
+## Step 9 - Gmail Sync (Optional - Reply Tracking)
+
+Gmail sync lets the app read your Gmail inbox and automatically detect when a lead replies to one of your emails.
+
+### Part A - Create Google OAuth Credentials
+
+1. Go to https://console.cloud.google.com
+2. Create a new **Project** (or select an existing one)
+3. Go to **APIs and Services -> Enable APIs** and enable the **Gmail API**
+4. Go to **APIs and Services -> Credentials -> Create Credentials -> OAuth 2.0 Client ID**
+5. Choose **Web application** as the application type
+6. Under **Authorised redirect URIs**, add:
+   - For local testing: `http://localhost:3000/api/gmail/callback`
+   - For your live site: `https://yourdomain.com/api/gmail/callback`
+7. Click Create - copy the **Client ID** and **Client Secret**
+
+### Part B - Set the Variables
+
+    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET=your-client-secret
+    GOOGLE_REDIRECT_URI=http://localhost:3000/api/gmail/callback
+
+### Part C - Connect Gmail in the App
+
+Once the app is running, go to **Settings** in the sidebar and click **Connect Gmail**. You will be redirected to Google to approve access.
+
+---
+
+## Step 10 - IMAP Mailbox Sync (Optional - Alternative Reply Tracking)
+
+If you use a custom sending mailbox rather than Gmail, IMAP sync can capture replies directly from that inbox. This is an alternative to Gmail sync - you do not need both.
+
+    MAILBOX_SYNC_ENABLED=false
+    MAILBOX_IMAP_HOST=imap.gmail.com
+    MAILBOX_IMAP_PORT=993
+    MAILBOX_IMAP_SECURE=true
+    MAILBOX_USER=youremail@yourcompany.com
+    MAILBOX_APP_PASSWORD=your-app-password
+    MAILBOX_LOOKBACK_DAYS=14
+
+**For Gmail:** Do not use your regular Google account password here. Go to **Google Account -> Security -> 2-Step Verification -> App passwords** and generate a dedicated app password for this app.
+
+Change `MAILBOX_SYNC_ENABLED` to `true` when ready to use it.
+
+---
+
+## Step 11 - App URL
+
+Set this to the address where the app is running:
+
+    # Local development:
+    APP_PUBLIC_URL=http://localhost:3000
+
+    # Production:
+    APP_PUBLIC_URL=https://yourdomain.com
+
+---
+
+## Running the App
+
+Once your `.env.local` is filled in:
+
+1. Open a terminal in the project folder
+2. Run: `npm install`
+3. Run: `npm run dev`
+4. Open your browser and go to **http://localhost:3000**
+5. Log in with the `ADMIN_EMAIL` and `ADMIN_PASSWORD` you set in Step 3
+
+---
+
+## Adding More Users (Team Members)
+
+Once you are logged in as admin:
+
+1. Click **Admin -> Users** in the left sidebar
+2. Click **Add User**
+3. Enter their name, email address, and a temporary password
+4. Share the app URL and temporary password with them
+
+All users created through the UI have the **User** role (access to leads and campaigns). The **Admin** role - which also unlocks the User Management page - is set via `ADMIN_EMAIL` on first setup.
+
+---
+
+## Using the In-App Settings Page
+
+After initial setup, you can update most API keys directly through the app at **Settings -> Integrations** - no need to edit `.env.local` again. Keys saved there are encrypted in the database.
+
+The Settings page covers: Claude AI, Smartlead, Apollo, Apify, Mailbox, and Gmail credentials.
+
+**Note:** `MONGODB_URI`, `JWT_SECRET`, `APP_ENCRYPTION_KEY`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` must always stay in `.env.local`. They cannot be set through the UI.
+
+---
+
+## Complete .env.local Reference
+
+    # Required
+    MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/pharma-leads?retryWrites=true&w=majority
+    JWT_SECRET=your-long-random-secret-string
+    APP_ENCRYPTION_KEY=exactly-32-characters-here!!
+
+    # First admin account (used once, on first login only)
+    ADMIN_EMAIL=you@yourcompany.com
+    ADMIN_PASSWORD=YourStrongPassword123!
+
+    # App URL
+    APP_PUBLIC_URL=http://localhost:3000
+
+    # Smartlead (email sending)
+    SMARTLEAD_API_KEY=
+    SMARTLEAD_CAMPAIGN_ID=
+    SMARTLEAD_FROM_EMAIL=
+    SMARTLEAD_FROM_NAME=
+    SMARTLEAD_DRY_RUN=true
+
+    # Apollo.io (contact discovery)
+    APOLLO_API_KEY=
+
+    # Apify (Google Maps scraping)
+    APIFY_API_TOKEN=
+    APIFY_WEBSITE_ENRICHMENT_ENABLED=false
+
+    # Claude AI (optional - email personalisation)
+    CLAUDE_API_KEY=
+
+    # Gmail OAuth sync (optional)
+    GOOGLE_CLIENT_ID=
+    GOOGLE_CLIENT_SECRET=
+    GOOGLE_REDIRECT_URI=http://localhost:3000/api/gmail/callback
+
+    # IMAP mailbox sync (optional - alternative to Gmail sync)
+    MAILBOX_SYNC_ENABLED=false
+    MAILBOX_IMAP_HOST=imap.gmail.com
+    MAILBOX_IMAP_PORT=993
+    MAILBOX_IMAP_SECURE=true
+    MAILBOX_USER=
+    MAILBOX_APP_PASSWORD=
+    MAILBOX_LOOKBACK_DAYS=14
+
+---
+
+## Troubleshooting
+
+**Cannot log in after first setup**
+Make sure `ADMIN_EMAIL` and `ADMIN_PASSWORD` are set in `.env.local` before the very first login. Restart the server after editing `.env.local`.
+
+**"Authentication is not configured" error**
+Either `ADMIN_EMAIL`/`ADMIN_PASSWORD` or the legacy `APP_PASSWORD` must be set. Check your `.env.local` file exists and the server has restarted after editing it.
+
+**Settings page shows "Encryption not available"**
+`APP_ENCRYPTION_KEY` is missing or not exactly 32 characters. Fix it in `.env.local` and restart.
+
+**Emails not sending**
+Check that `SMARTLEAD_DRY_RUN=false` and that your Smartlead campaign ID and API key are correct.
+
+**Gmail Connect button does not work**
+Make sure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` are all set and the redirect URI exactly matches what is listed in your Google Cloud OAuth credentials.

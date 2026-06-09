@@ -1,6 +1,6 @@
 /**
  * Keyword-based reply classifier — zero Claude credits.
- * Shared by the Smartlead webhook route and the manual sync endpoint.
+ * Used by Gmail sync and the Smartlead manual sync endpoint.
  *
  * Priority order (highest wins):
  *   1. do_not_contact  — unsubscribe / remove me from list
