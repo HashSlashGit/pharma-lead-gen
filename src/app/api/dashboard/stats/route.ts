@@ -38,8 +38,6 @@ export async function GET() {
     );
   }
 
-  console.log('[dashboard/stats] MongoDB connected before stats queries');
-
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -123,8 +121,6 @@ export async function GET() {
       safeStat('productCount', () => Product.countDocuments(), 0),
       safeStat('campaignCount', () => Campaign.countDocuments(), 0),
     ]);
-
-    console.log('[dashboard/stats] all queries complete');
 
     const estimatedCostToday = claudeCostToday[0]?.total ?? 0;
 

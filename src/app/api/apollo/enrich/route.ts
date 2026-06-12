@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { enrichApolloPerson } from '@/lib/services/apollo';
+import { getSettings } from '@/lib/services/settingsCache';
 
 const EnrichSchema = z.object({
   apolloId: z.string(),
@@ -21,10 +22,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    if (!process.env.APOLLO_API_KEY) {
+    const settings = await getSettings();
+    if (!settings.apolloApiKey) {
       return NextResponse.json(
-        { error: 'Apollo API key not configured — set APOLLO_API_KEY in .env.local', found: false },
-        { status: 503 }
+        { error: 'Apollo API key not configured. Add your Apollo API key in Settings.', found: false },
+        { status: 503 },
       );
     }
 

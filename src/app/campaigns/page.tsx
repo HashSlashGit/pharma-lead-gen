@@ -69,7 +69,7 @@ export default function CampaignsPage() {
     fetch('/api/campaigns')
       .then((r) => r.json())
       .then((data) => setCampaigns(data.campaigns ?? []))
-      .catch(() => {})
+      .catch((err) => console.error('[campaigns] fetch failed:', err))
       .finally(() => setLoading(false));
   };
 
@@ -78,7 +78,7 @@ export default function CampaignsPage() {
     fetch('/api/config')
       .then((r) => r.json())
       .then((data) => setSlConfig((data.smartlead as SmartleadConfig) ?? null))
-      .catch(() => {})
+      .catch((err) => console.error('[campaigns] config fetch failed:', err))
       .finally(() => setConfigLoading(false));
   }, []);
 
@@ -211,24 +211,24 @@ export default function CampaignsPage() {
                 </label>
                 <input value={form.name} onChange={set('name')} required
                   placeholder="e.g. KSA Pharmacy Outreach Q3"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Target Country</label>
                 <input value={form.targetCountry} onChange={set('targetCountry')}
                   placeholder="e.g. Saudi Arabia"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Target Category</label>
                 <input value={form.targetCategory} onChange={set('targetCategory')}
                   placeholder="e.g. Pharmacy, Distributor"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Status</label>
                 <select value={form.status} onChange={set('status')}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800">
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800">
                   <option value="draft">Draft</option>
                   <option value="active">Active</option>
                   <option value="paused">Paused</option>

@@ -34,12 +34,6 @@ export async function POST(
     const sendMode: 'campaign' | 'custom' =
       reqBody.sendMode === 'custom' ? 'custom' : 'campaign';
 
-    console.log('[email-log send] request received', {
-      emailLogId: id,
-      sendMode,
-      SMARTLEAD_DRY_RUN: process.env.SMARTLEAD_DRY_RUN,
-    });
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid email log ID' }, { status: 400 });
     }
@@ -47,7 +41,6 @@ export async function POST(
     await connectDB();
 
     const emailLog = await EmailLog.findById(id).lean();
-    console.log('[email-log send] emailLog found:', !!emailLog);
     if (!emailLog) {
       return NextResponse.json({ error: 'Email log not found' }, { status: 404 });
     }
@@ -72,7 +65,6 @@ export async function POST(
     }
 
     const lead = await Lead.findById(emailLog.leadId).lean();
-    console.log('[email-log send] lead found:', !!lead, 'email exists:', !!lead?.email);
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
@@ -87,13 +79,6 @@ export async function POST(
         { status: 422 }
       );
     }
-
-    console.log('[email-log send] pre-send check', {
-      sendMode,
-      subjectExists: !!emailLog.subject,
-      bodyExists: !!emailLog.body,
-      leadEmailExists: !!lead.email,
-    });
 
     // ── Call smartlead service (handles no-key / dry-run / live) ─────
     const emailParams = {
@@ -228,7 +213,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        mode: process.env.SMARTLEAD_DRY_RUN === 'true' ? 'dry_run' : 'live',
+        mode: process.env.SMARTLEAD_DRY_RUN !== 'false' ? 'dry_run' : 'live',
         status: 'failed',
         message: 'Failed to process send request',
         error: err instanceof Error ? err.message : String(err),

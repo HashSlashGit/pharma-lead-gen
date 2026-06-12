@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import AppShell from '@/components/layout/AppShell';
-import Link from 'next/link';
 import {
   CheckCircle,
   XCircle,
@@ -17,10 +16,6 @@ import {
   Inbox,
   Activity,
   Loader2,
-  Rocket,
-  Save,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
 
 interface HealthData {
@@ -146,178 +141,6 @@ function ServiceCard({
   );
 }
 
-// ─── Integration Settings types ───────────────────────────────────────────────
-
-interface IntegrationInfo {
-  configured: boolean;
-  masked: string | null;
-}
-
-interface IntegrationData {
-  encryptionAvailable: boolean;
-  claude: IntegrationInfo;
-  smartlead: IntegrationInfo & {
-    campaignId: string | null;
-    fromEmail: string | null;
-    fromName: string | null;
-    dryRun: boolean;
-  };
-  apollo: IntegrationInfo & { maxResults: number };
-  apify: IntegrationInfo & {
-    actorId: string | null;
-    maxResults: number;
-    websiteEnrichment: boolean;
-  };
-  mailbox: {
-    enabled: boolean;
-    imapHost: string | null;
-    imapPort: number;
-    imapSecure: boolean;
-    user: string | null;
-    lookbackDays: number;
-    passwordConfigured: boolean;
-  };
-  appUrl: string | null;
-  google: {
-    clientId: IntegrationInfo;
-    clientSecret: IntegrationInfo;
-    redirectUri: string | null;
-  };
-}
-
-// ─── Masked secret input ──────────────────────────────────────────────────────
-
-function SecretInput({
-  label, placeholder, value, onChange, hint,
-}: {
-  label: string;
-  placeholder?: string;
-  value: string;
-  onChange: (v: string) => void;
-  hint?: string;
-}) {
-  const [show, setShow] = useState(false);
-  return (
-    <div>
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-      <div className="relative">
-        <input
-          type={show ? 'text' : 'password'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? 'Enter value…'}
-          autoComplete="new-password"
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-700"
-        />
-        <button
-          type="button"
-          onClick={() => setShow(!show)}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-        >
-          {show ? <EyeOff size={14} /> : <Eye size={14} />}
-        </button>
-      </div>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
-    </div>
-  );
-}
-
-function FieldInput({
-  label, placeholder, value, onChange, type = 'text',
-}: {
-  label: string;
-  placeholder?: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
-      />
-    </div>
-  );
-}
-
-function IntegrationCard({
-  title, icon: Icon, iconBg, configured, masked, children, onSave, saving, saveResult,
-}: {
-  title: string;
-  icon: React.ElementType;
-  iconBg: string;
-  configured: boolean;
-  masked?: string | null;
-  children: React.ReactNode;
-  onSave: () => void;
-  saving: boolean;
-  saveResult: { ok?: boolean; error?: string } | null;
-}) {
-  const [open, setOpen] = useState(!configured);
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-slate-50/60 transition-colors"
-      >
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
-          <Icon size={16} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-800 text-sm">{title}</p>
-          {masked ? (
-            <p className="text-xs text-slate-400 font-mono mt-0.5">{masked}</p>
-          ) : (
-            <p className="text-xs text-slate-400 mt-0.5">Not configured</p>
-          )}
-        </div>
-        <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ring-1 ${
-          configured
-            ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-            : 'bg-slate-50 text-slate-500 ring-slate-200'
-        }`}>
-          {configured ? 'Connected' : 'Missing'}
-        </span>
-      </button>
-
-      {open && (
-        <div className="border-t border-slate-100 px-5 py-4 space-y-3">
-          {children}
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={saving}
-              className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
-            >
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            {saveResult?.ok && (
-              <span className="flex items-center gap-1 text-emerald-600 text-xs font-medium">
-                <CheckCircle size={13} /> Saved
-              </span>
-            )}
-            {saveResult?.error && (
-              <span className="flex items-center gap-1 text-rose-600 text-xs">
-                <AlertCircle size={13} /> {saveResult.error}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
 function LoadingSkeleton() {
   return (
     <div className="space-y-4">
@@ -333,102 +156,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
-
-  // ── Integration settings state ────────────────────────────────────────────
-  const [integrations, setIntegrations] = useState<IntegrationData | null>(null);
-  const [intLoading, setIntLoading] = useState(true);
-
-  // Per-service form state
-  const [claudeKey, setClaudeKey]               = useState('');
-  const [smartleadKey, setSmartleadKey]         = useState('');
-  const [smartleadCampaign, setSmartleadCampaign] = useState('');
-  const [smartleadFrom, setSmartleadFrom]       = useState('');
-  const [smartleadName, setSmartleadName]       = useState('');
-  const [smartleadDryRun, setSmartleadDryRun]   = useState(true);
-
-  const [apolloKey, setApolloKey]               = useState('');
-  const [apolloMax, setApolloMax]               = useState('25');
-  const [apifyToken, setApifyToken]             = useState('');
-  const [apifyActor, setApifyActor]             = useState('');
-  const [apifyMax, setApifyMax]                 = useState('50');
-  const [apifyEnrich, setApifyEnrich]           = useState(false);
-  const [mailboxEnabled, setMailboxEnabled]     = useState(false);
-  const [mailboxHost, setMailboxHost]           = useState('');
-  const [mailboxPort, setMailboxPort]           = useState('993');
-  const [mailboxSecure, setMailboxSecure]       = useState(true);
-  const [mailboxUser, setMailboxUser]           = useState('');
-  const [mailboxPass, setMailboxPass]           = useState('');
-  const [mailboxDays, setMailboxDays]           = useState('14');
-  const [appUrl, setAppUrl]                     = useState('');
-  const [googleClientId, setGoogleClientId]         = useState('');
-  const [googleClientSecret, setGoogleClientSecret] = useState('');
-  const [googleRedirectUri, setGoogleRedirectUri]   = useState('');
-
-  // Per-service saving state
-  const [saving, setSaving]         = useState<Record<string, boolean>>({});
-  const [saveResult, setSaveResult] = useState<Record<string, { ok?: boolean; error?: string } | null>>({});
-
-  const applyIntegrationData = (data: IntegrationData) => {
-    setIntegrations(data);
-    setSmartleadCampaign(data.smartlead.campaignId ?? '');
-    setSmartleadFrom(data.smartlead.fromEmail ?? '');
-    setSmartleadName(data.smartlead.fromName ?? '');
-    setSmartleadDryRun(data.smartlead.dryRun);
-    setApolloMax(String(data.apollo.maxResults));
-    setApifyActor(data.apify.actorId ?? '');
-    setApifyMax(String(data.apify.maxResults));
-    setApifyEnrich(data.apify.websiteEnrichment);
-    setMailboxEnabled(data.mailbox.enabled);
-    setMailboxHost(data.mailbox.imapHost ?? '');
-    setMailboxPort(String(data.mailbox.imapPort));
-    setMailboxSecure(data.mailbox.imapSecure);
-    setMailboxUser(data.mailbox.user ?? '');
-    setMailboxDays(String(data.mailbox.lookbackDays));
-    setAppUrl(data.appUrl ?? '');
-    setGoogleRedirectUri(data.google?.redirectUri ?? '');
-  };
-
-  // Called by Refresh button and after saves — setIntLoading(true) is fine here
-  const fetchIntegrations = useCallback(() => {
-    setIntLoading(true);
-    fetch('/api/settings/integrations')
-      .then((r) => r.json())
-      .then((data: IntegrationData) => applyIntegrationData(data))
-      .catch(() => { /* non-fatal */ })
-      .finally(() => setIntLoading(false));
-  }, []);
-
-  useEffect(() => {
-    // All setState calls inside applyIntegrationData run asynchronously via .then()
-    fetch('/api/settings/integrations')
-      .then((r) => r.json())
-      .then((data: IntegrationData) => applyIntegrationData(data))
-      .catch(() => { /* non-fatal */ })
-      .finally(() => setIntLoading(false));
-  }, []);
-
-  const saveSection = async (section: string, payload: Record<string, unknown>) => {
-    setSaving((p) => ({ ...p, [section]: true }));
-    setSaveResult((p) => ({ ...p, [section]: null }));
-    try {
-      const res = await fetch('/api/settings/integrations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json() as { success?: boolean; error?: string };
-      if (res.ok && data.success) {
-        setSaveResult((p) => ({ ...p, [section]: { ok: true } }));
-        await fetchIntegrations();
-      } else {
-        setSaveResult((p) => ({ ...p, [section]: { error: data.error ?? 'Save failed' } }));
-      }
-    } catch {
-      setSaveResult((p) => ({ ...p, [section]: { error: 'Network error' } }));
-    } finally {
-      setSaving((p) => ({ ...p, [section]: false }));
-    }
-  };
 
   // ── Gmail state ────────────────────────────────────────────────────────────
   const [gmailStatus, setGmailStatus] = useState<{
@@ -461,18 +188,14 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    fetch('/api/gmail/status')
-      .then((r) => r.json())
-      .then((data) => setGmailStatus(data))
-      .catch(() => setGmailStatus({ configured: false, connected: false }));
-  }, []);
+    fetchGmailStatus();
+  }, [fetchGmailStatus]);
 
   // Detect ?gmail=connected or ?gmail=error after OAuth redirect
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const gmailParam = params.get('gmail');
-    // Read params synchronously, then schedule state updates asynchronously
     Promise.resolve(gmailParam).then((gp) => {
       if (gp === 'connected') {
         setGmailConnectedNotice(true);
@@ -508,25 +231,19 @@ export default function SettingsPage() {
     setLastChecked(new Date());
   };
 
-  // Used by Refresh button — not in a useEffect, so setLoading(true) is fine
   const fetchHealth = useCallback(() => {
     setLoading(true);
     setFetchError(null);
     fetch('/api/health')
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data: HealthData) => applyHealthData(data))
-      .catch(() => setFetchError('Could not reach /api/health — check the dev server.'))
+      .catch(() => setFetchError('Could not reach /api/health — check the server.'))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    // All setState calls are in async .then()/.catch()/.finally() — not synchronous in effect body
-    fetch('/api/health')
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((data: HealthData) => applyHealthData(data))
-      .catch(() => setFetchError('Could not reach /api/health — check the dev server.'))
-      .finally(() => setLoading(false));
-  }, [])
+    fetchHealth();
+  }, [fetchHealth]);
 
   // ── Derive card data from health ─────────────────────────────────────
   const mongoLevel: StatusLevel =
@@ -555,7 +272,6 @@ export default function SettingsPage() {
     ? 'Test Mode'
     : 'Live';
 
-  // Overall readiness: MongoDB + at least one send channel
   const overallReady =
     (health?.canConnect === true) && (health?.smartlead.configured === true);
 
@@ -563,197 +279,7 @@ export default function SettingsPage() {
     <AppShell>
       <div className="max-w-2xl">
 
-        {/* ── Integration Settings section ─────────────────────────────── */}
-        <div className="mb-10">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Integration Settings</h1>
-              <p className="text-slate-500 text-sm mt-1">Configure your API keys and service credentials. Keys are encrypted at rest.</p>
-            </div>
-            <button onClick={fetchIntegrations} disabled={intLoading}
-              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 px-3 py-2 rounded-xl border border-slate-200 hover:bg-white transition-colors disabled:opacity-40">
-              <RefreshCw size={13} className={intLoading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-          </div>
-
-          {!integrations?.encryptionAvailable && !intLoading && (
-            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
-              <AlertCircle size={15} className="shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">Encryption not configured</p>
-                <p className="text-xs mt-0.5">Add <code className="bg-amber-100 px-1 rounded font-mono">APP_ENCRYPTION_KEY</code> to your environment (64 hex chars) to enable secure key storage.</p>
-              </div>
-            </div>
-          )}
-
-          {intLoading ? (
-            <div className="space-y-3">
-              {[1,2,3,4,5].map(i => <div key={i} className="h-16 bg-white rounded-2xl border border-slate-100 animate-pulse" />)}
-            </div>
-          ) : (
-            <div className="space-y-3">
-
-              {/* Claude */}
-              <IntegrationCard title="Claude AI" icon={Brain} iconBg="bg-violet-50 text-violet-600"
-                configured={integrations?.claude.configured ?? false}
-                masked={integrations?.claude.masked}
-                onSave={() => saveSection('claude', { claudeApiKey: claudeKey })}
-                saving={!!saving['claude']} saveResult={saveResult['claude'] ?? null}>
-                <SecretInput label="Claude API Key" placeholder="sk-ant-api03-…"
-                  value={claudeKey} onChange={setClaudeKey}
-                  hint="Get from console.anthropic.com → API Keys" />
-              </IntegrationCard>
-
-              {/* Smartlead */}
-              <IntegrationCard title="Smartlead" icon={Zap} iconBg="bg-amber-50 text-amber-600"
-                configured={integrations?.smartlead.configured ?? false}
-                masked={integrations?.smartlead.masked}
-                onSave={() => saveSection('smartlead', {
-                  smartleadApiKey: smartleadKey,
-                  smartleadCampaignId: smartleadCampaign,
-                  smartleadFromEmail: smartleadFrom,
-                  smartleadFromName: smartleadName,
-                  smartleadDryRun,
-                })}
-                saving={!!saving['smartlead']} saveResult={saveResult['smartlead'] ?? null}>
-                <SecretInput label="Smartlead API Key" placeholder="sl-…"
-                  value={smartleadKey} onChange={setSmartleadKey} />
-                <FieldInput label="Campaign ID" placeholder="12345"
-                  value={smartleadCampaign} onChange={setSmartleadCampaign} />
-                <FieldInput label="From Email" placeholder="sales@yourcompany.com"
-                  value={smartleadFrom} onChange={setSmartleadFrom} />
-                <FieldInput label="From Name" placeholder="Your Name"
-                  value={smartleadName} onChange={setSmartleadName} />
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                    <input type="checkbox" checked={smartleadDryRun} onChange={(e) => setSmartleadDryRun(e.target.checked)}
-                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                    Dry-run mode (test only, no real sends)
-                  </label>
-                </div>
-              </IntegrationCard>
-
-              {/* Apollo */}
-              <IntegrationCard title="Apollo.io" icon={Globe} iconBg="bg-blue-50 text-blue-600"
-                configured={integrations?.apollo.configured ?? false}
-                masked={integrations?.apollo.masked}
-                onSave={() => saveSection('apollo', {
-                  apolloApiKey: apolloKey,
-                  apolloMaxResults: parseInt(apolloMax, 10) || 25,
-                })}
-                saving={!!saving['apollo']} saveResult={saveResult['apollo'] ?? null}>
-                <SecretInput label="Apollo API Key"
-                  value={apolloKey} onChange={setApolloKey} />
-                <FieldInput label="Max Results per Search" placeholder="25" type="number"
-                  value={apolloMax} onChange={setApolloMax} />
-              </IntegrationCard>
-
-              {/* Apify */}
-              <IntegrationCard title="Apify (Google Maps)" icon={Globe} iconBg="bg-emerald-50 text-emerald-600"
-                configured={integrations?.apify.configured ?? false}
-                masked={integrations?.apify.masked}
-                onSave={() => saveSection('apify', {
-                  apifyToken,
-                  apifyActorId: apifyActor,
-                  apifyMaxResults: parseInt(apifyMax, 10) || 50,
-                  apifyWebsiteEnrichment: apifyEnrich,
-                })}
-                saving={!!saving['apify']} saveResult={saveResult['apify'] ?? null}>
-                <SecretInput label="Apify API Token" placeholder="apify_api_…"
-                  value={apifyToken} onChange={setApifyToken} />
-                <FieldInput label="Google Maps Actor ID" placeholder="compass/crawler-google-places"
-                  value={apifyActor} onChange={setApifyActor} />
-                <FieldInput label="Max Results per Search" placeholder="50" type="number"
-                  value={apifyMax} onChange={setApifyMax} />
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                  <input type="checkbox" checked={apifyEnrich} onChange={(e) => setApifyEnrich(e.target.checked)}
-                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                  Enable website email enrichment (uses extra Apify credits)
-                </label>
-              </IntegrationCard>
-
-              {/* Mailbox */}
-              <IntegrationCard title="Mailbox / IMAP Sync" icon={Inbox} iconBg="bg-slate-100 text-slate-600"
-                configured={integrations?.mailbox.passwordConfigured ?? false}
-                masked={integrations?.mailbox.user ? `${integrations.mailbox.user} — IMAP` : null}
-                onSave={() => saveSection('mailbox', {
-                  mailboxEnabled,
-                  mailboxImapHost: mailboxHost,
-                  mailboxImapPort: parseInt(mailboxPort, 10) || 993,
-                  mailboxImapSecure: mailboxSecure,
-                  mailboxUser,
-                  mailboxPassword: mailboxPass,
-                  mailboxLookbackDays: parseInt(mailboxDays, 10) || 14,
-                })}
-                saving={!!saving['mailbox']} saveResult={saveResult['mailbox'] ?? null}>
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                  <input type="checkbox" checked={mailboxEnabled} onChange={(e) => setMailboxEnabled(e.target.checked)}
-                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                  Enable mailbox sync
-                </label>
-                <FieldInput label="IMAP Host" placeholder="imap.gmail.com"
-                  value={mailboxHost} onChange={setMailboxHost} />
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldInput label="Port" placeholder="993" type="number"
-                    value={mailboxPort} onChange={setMailboxPort} />
-                  <FieldInput label="Lookback Days" placeholder="14" type="number"
-                    value={mailboxDays} onChange={setMailboxDays} />
-                </div>
-                <FieldInput label="Email / Username"
-                  value={mailboxUser} onChange={setMailboxUser} />
-                <SecretInput label="App Password" hint="Use an app-specific password, not your account password."
-                  value={mailboxPass} onChange={setMailboxPass} />
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                  <input type="checkbox" checked={mailboxSecure} onChange={(e) => setMailboxSecure(e.target.checked)}
-                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                  Use SSL/TLS (recommended)
-                </label>
-              </IntegrationCard>
-
-              {/* Google OAuth */}
-              <IntegrationCard title="Google OAuth (Gmail)" icon={Inbox} iconBg="bg-blue-50 text-blue-600"
-                configured={!!(integrations?.google?.clientId.configured && integrations?.google?.clientSecret.configured && integrations?.google?.redirectUri)}
-                masked={integrations?.google?.clientId.configured ? `Client ID: ${integrations.google.clientId.masked}` : null}
-                onSave={() => saveSection('google', {
-                  googleClientId,
-                  googleClientSecret,
-                  googleRedirectUri,
-                })}
-                saving={!!saving['google']} saveResult={saveResult['google'] ?? null}>
-                <p className="text-xs text-slate-500">Go to <strong>console.cloud.google.com</strong> → APIs &amp; Services → Credentials → Create OAuth 2.0 Client ID (Web application). Add <code className="bg-slate-100 px-1 rounded">/api/gmail/callback</code> as an authorised redirect URI.</p>
-                <SecretInput label="Google Client ID" placeholder="xxx.apps.googleusercontent.com"
-                  value={googleClientId} onChange={setGoogleClientId}
-                  hint={integrations?.google?.clientId.configured ? `Currently configured (${integrations.google.clientId.masked})` : undefined} />
-                <SecretInput label="Google Client Secret" placeholder="GOCSPX-…"
-                  value={googleClientSecret} onChange={setGoogleClientSecret}
-                  hint={integrations?.google?.clientSecret.configured ? `Currently configured (${integrations.google.clientSecret.masked})` : undefined} />
-                <FieldInput label="Redirect URI" placeholder="https://your-app.vercel.app/api/gmail/callback"
-                  value={googleRedirectUri} onChange={setGoogleRedirectUri} />
-              </IntegrationCard>
-
-              {/* App URL */}
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-5 py-4">
-                <p className="text-sm font-semibold text-slate-700 mb-3">App URL</p>
-                <FieldInput label="Public app URL (used for webhook references)"
-                  placeholder="https://your-app.vercel.app"
-                  value={appUrl} onChange={setAppUrl} />
-                <div className="flex items-center gap-3 mt-3">
-                  <button onClick={() => saveSection('appUrl', { appUrl })} disabled={!!saving['appUrl']}
-                    className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-                    {saving['appUrl'] ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                    Save
-                  </button>
-                  {saveResult['appUrl']?.ok && <span className="text-emerald-600 text-xs font-medium flex items-center gap-1"><CheckCircle size={12} /> Saved</span>}
-                </div>
-              </div>
-
-            </div>
-          )}
-        </div>
-
         {/* ── System Health section ─────────────────────────────────────── */}
-        {/* Header */}
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Settings & System Health</h1>
@@ -806,8 +332,8 @@ export default function SettingsPage() {
         {/* Security note */}
         <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 mb-6 flex gap-2 text-xs text-slate-600">
           <Lock size={14} className="shrink-0 mt-0.5 text-slate-400" />
-          API keys are never returned by the server — only presence is checked.
-          All secrets live in <code className="bg-slate-100 px-1 rounded">.env.local</code> and are never sent to the browser.
+          API keys are never returned by the server — only their presence is checked.
+          Credentials are stored encrypted in the database and may also be provided via environment variables (env takes effect if DB is unavailable).
         </div>
 
         {/* Cards */}
@@ -832,12 +358,12 @@ export default function SettingsPage() {
                   ? [
                       'Go to mongodb.com/atlas and create a free M0 cluster.',
                       'Create a database user and whitelist 0.0.0.0/0 in Network Access.',
-                      'Copy the connection string and set MONGODB_URI in .env.local.',
+                      'Copy the connection string and add MONGODB_URI to your environment variables.',
                     ]
                   : !health.canConnect
                   ? [
-                      'MongoDB URI is loaded, but the connection failed.',
-                      'Check the server terminal (npm run dev output) for the exact error.',
+                      'MongoDB URI is set, but the connection failed.',
+                      'Check your deployment logs for the exact error.',
                       'Common causes: wrong password, IP not whitelisted in Atlas Network Access, cluster paused.',
                     ]
                   : undefined
@@ -857,7 +383,7 @@ export default function SettingsPage() {
                   ? [
                       'Optional — the app works without it.',
                       'Get a key at console.anthropic.com.',
-                      'Set CLAUDE_API_KEY=sk-ant-... in .env.local.',
+                      'Add CLAUDE_API_KEY to your environment variables.',
                       'Used only when you click "Personalize with AI" or "Improve with AI".',
                     ]
                   : undefined
@@ -877,7 +403,7 @@ export default function SettingsPage() {
                   ? [
                       'Optional — only needed for /apollo lead search.',
                       'Sign up at app.apollo.io and go to Settings → Integrations → API.',
-                      'Set APOLLO_API_KEY in .env.local.',
+                      'Add APOLLO_API_KEY to your environment variables.',
                     ]
                   : undefined
               }
@@ -903,7 +429,7 @@ export default function SettingsPage() {
                   ? [
                       'Optional — only needed for /apify Google Maps scraping.',
                       'Sign up at console.apify.com and copy your API token from Settings → Integrations.',
-                      'Set APIFY_API_TOKEN in .env.local.',
+                      'Add APIFY_API_TOKEN to your environment variables.',
                       'Leave APIFY_WEBSITE_ENRICHMENT_ENABLED=false unless you need contact-page scraping.',
                     ]
                   : undefined
@@ -943,9 +469,9 @@ export default function SettingsPage() {
                 !health.smartlead.configured || !health.smartlead.campaignIdPresent
                   ? [
                       'Sign up at smartlead.ai and get your API key from Settings → API Key.',
-                      'Set SMARTLEAD_API_KEY in .env.local.',
+                      'Add SMARTLEAD_API_KEY to your environment variables.',
                       'Create a campaign in Smartlead — copy its ID from the URL (/campaigns/{id}).',
-                      'Set SMARTLEAD_CAMPAIGN_ID in .env.local.',
+                      'Add SMARTLEAD_CAMPAIGN_ID to your environment variables.',
                       'Set SMARTLEAD_DRY_RUN=true to test without sending real emails.',
                       'Switch to SMARTLEAD_DRY_RUN=false when ready to go live.',
                     ]
@@ -1072,7 +598,7 @@ export default function SettingsPage() {
                 {gmailStatus && !gmailStatus.configured && (
                   <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                     <AlertCircle size={13} className="shrink-0 mt-0.5" />
-                    <span>Add your Google OAuth credentials in the <strong>Google OAuth (Gmail)</strong> card above, then click <strong>Connect Gmail</strong>.</span>
+                    <span>Add your Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI) to your environment variables, then click <strong>Connect Gmail</strong>.</span>
                   </div>
                 )}
               </div>
@@ -1080,27 +606,11 @@ export default function SettingsPage() {
           </div>
         ) : null}
 
-        {/* Production checklist link — dev/staging only */}
-        {process.env.NODE_ENV !== 'production' && (
-          <div className="mt-4">
-            <Link
-              href="/production-checklist"
-              className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl px-5 py-4 text-white"
-            >
-              <Rocket size={18} className="text-emerald-400 shrink-0" />
-              <div className="flex-1">
-                <p className="font-semibold text-sm">Production Checklist</p>
-                <p className="text-xs text-slate-400 mt-0.5">Step-by-step readiness check before enabling live sends.</p>
-              </div>
-              <span className="text-slate-400 text-xs">→</span>
-            </Link>
-          </div>
-        )}
 
-        {/* Env var reference block */}
+        {/* Environment variables reference block */}
         <div className="mt-6 bg-slate-800 rounded-xl p-5 text-sm">
-          <h3 className="font-semibold text-white mb-1">.env.local reference</h3>
-          <p className="text-slate-400 text-xs mb-4">Copy to project root — never commit this file.</p>
+          <h3 className="font-semibold text-white mb-1">Environment Variables Reference</h3>
+          <p className="text-slate-400 text-xs mb-4">Add these in your deployment settings (e.g. Vercel → Settings → Environment Variables).</p>
           <pre className="text-emerald-300 text-xs overflow-x-auto leading-loose">
 {`# ── Required ─────────────────────────────────────────────
 MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/pharma-leads
@@ -1111,13 +621,19 @@ APP_ENCRYPTION_KEY=<64-char-hex>
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=<strong-password>
 
-# ── App URL (webhook callbacks) ───────────────────────────
+# ── App URL ───────────────────────────────────────────────
 APP_URL=https://your-app.vercel.app
 
-# ── All other credentials ─────────────────────────────────
-# Configure Claude, Smartlead, Apollo, Apify, Mailbox, and
-# Google OAuth via Settings → Integrations in the UI.
-# They are encrypted and stored in MongoDB — no env vars needed.`}
+# ── Integrations ──────────────────────────────────────────
+CLAUDE_API_KEY=sk-ant-...
+SMARTLEAD_API_KEY=...
+SMARTLEAD_CAMPAIGN_ID=...
+SMARTLEAD_DRY_RUN=true
+APOLLO_API_KEY=...
+APIFY_API_TOKEN=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=https://your-app.vercel.app/api/gmail/callback`}
           </pre>
         </div>
 

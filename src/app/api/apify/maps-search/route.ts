@@ -4,13 +4,11 @@ import { connectDB } from '@/lib/db/mongoose';
 import Lead from '@/lib/models/Lead';
 import { searchGoogleMapsBusinesses } from '@/lib/services/apify';
 import { scoreGoogleMapsLead } from '@/lib/utils/scoreLead';
+import { getSettings } from '@/lib/services/settingsCache';
 import { type ApifyLeadPreview } from '@/types';
 
 // Apify actor runs take 30–90 s for small batches; allow extra for website enrichment.
 export const maxDuration = 120;
-
-// Server-enforced plan cap — raise by setting APIFY_GOOGLE_MAPS_MAX_RESULTS_LIMIT in .env
-const APIFY_PLAN_LIMIT = Math.max(1, parseInt(process.env.APIFY_GOOGLE_MAPS_MAX_RESULTS_LIMIT ?? '50', 10) || 50);
 
 const SearchSchema = z.object({
   keyword: z.string().min(1, 'keyword is required'),
@@ -30,13 +28,22 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Invalid input', details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    if (!process.env.APIFY_API_TOKEN && !process.env.APIFY_TOKEN) {
+    const settings = await getSettings();
+
+    // Server-enforced plan cap — raise by setting APIFY_GOOGLE_MAPS_MAX_RESULTS_LIMIT in .env
+    const APIFY_PLAN_LIMIT = Math.max(
+      1,
+      settings.apifyMaxResults ||
+        Math.max(1, parseInt(process.env.APIFY_GOOGLE_MAPS_MAX_RESULTS_LIMIT ?? '50', 10) || 50),
+    );
+
+    if (!settings.apifyToken) {
       return NextResponse.json({
-        error: 'Apify API token not configured — set APIFY_API_TOKEN in .env.local',
+        error: 'Apify API token not configured. Add your Apify API token in Settings.',
         leads: [],
       });
     }
@@ -44,28 +51,28 @@ export async function POST(req: Request) {
     const { keyword, city, country, limit } = parsed.data;
 
     if (limit > APIFY_PLAN_LIMIT) {
-      return NextResponse.json({
-        error: `Your current Apify plan limit is ${APIFY_PLAN_LIMIT} results. To scrape up to ${limit}, upgrade your Apify plan and set APIFY_GOOGLE_MAPS_MAX_RESULTS_LIMIT=${limit} in your environment.`,
-        limitExceeded: true,
-        planLimit: APIFY_PLAN_LIMIT,
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: `Your current Apify plan limit is ${APIFY_PLAN_LIMIT} results. To scrape up to ${limit}, upgrade your Apify plan and raise the limit in Settings.`,
+          limitExceeded: true,
+          planLimit: APIFY_PLAN_LIMIT,
+        },
+        { status: 400 },
+      );
     }
 
-    // Run Google Maps actor (+ website email enrichment when enabled).
     const places = await searchGoogleMapsBusinesses({ keyword, city, country, limit });
 
-    // Safe summary log — never includes the API token.
     const websitesChecked = places.filter(
-      (p) => p.emailEnrichmentStatus && p.emailEnrichmentStatus !== 'not_checked'
+      (p) => p.emailEnrichmentStatus && p.emailEnrichmentStatus !== 'not_checked',
     ).length;
     const emailsFound = places.filter((p) => p.emailEnrichmentStatus === 'enriched').length;
     console.log(
-      `[Maps Search] Results: ${places.length} | Websites checked: ${websitesChecked} | Emails found: ${emailsFound}`
+      `[Maps Search] Results: ${places.length} | Websites checked: ${websitesChecked} | Emails found: ${emailsFound}`,
     );
 
     await connectDB();
 
-    // Collect identifiers for a batch duplicate check.
     const emails = places.filter((p) => p.email).map((p) => p.email!.toLowerCase());
     const websites = places.filter((p) => p.website).map((p) => stripWebsite(p.website!));
 
@@ -86,17 +93,17 @@ export async function POST(req: Request) {
     ]);
 
     const dupEmailSet = new Set(
-      (emailDupes as { email?: string }[]).map((d) => d.email?.toLowerCase()).filter(Boolean)
+      (emailDupes as { email?: string }[]).map((d) => d.email?.toLowerCase()).filter(Boolean),
     );
     const dupKeySet = new Set(
       (nameDupes as { companyName: string; country: string }[]).map(
-        (d) => `${d.companyName.toLowerCase()}::${d.country.toLowerCase()}`
-      )
+        (d) => `${d.companyName.toLowerCase()}::${d.country.toLowerCase()}`,
+      ),
     );
     const existingWebsiteSet = new Set(
       (allWebsites as { website?: string }[])
         .map((d) => (d.website ? stripWebsite(d.website) : ''))
-        .filter(Boolean)
+        .filter(Boolean),
     );
 
     const leads: ApifyLeadPreview[] = places.map((place) => {
@@ -112,11 +119,9 @@ export async function POST(req: Request) {
 
       const emailDupe = !!(place.email && dupEmailSet.has(place.email.toLowerCase()));
       const nameDupe = dupKeySet.has(
-        `${place.companyName.toLowerCase()}::${place.country.toLowerCase()}`
+        `${place.companyName.toLowerCase()}::${place.country.toLowerCase()}`,
       );
-      const websiteDupe = !!(
-        place.website && existingWebsiteSet.has(stripWebsite(place.website))
-      );
+      const websiteDupe = !!(place.website && existingWebsiteSet.has(stripWebsite(place.website)));
 
       return {
         companyName: place.companyName,

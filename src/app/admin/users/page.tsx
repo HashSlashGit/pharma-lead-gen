@@ -58,7 +58,7 @@ function FormField({ label, value, onChange, type = 'text', placeholder, require
     <div>
       <label className="block text-xs font-medium text-slate-600 mb-1">{label}{required && <span className="text-rose-500 ml-0.5">*</span>}</label>
       <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
+        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800" />
     </div>
   );
 }
@@ -94,15 +94,17 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    // Async fetch — all setState calls happen in async .then()/.catch()/.finally()
+    let active = true;
     fetch('/api/users')
       .then((r) => r.json())
       .then((data: { users?: UserRow[]; error?: string }) => {
+        if (!active) return;
         if (data.error) setFetchError(data.error);
         else setUsers(data.users ?? []);
       })
-      .catch(() => setFetchError('Network error loading users.'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (active) setFetchError('Network error loading users.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const openAdd = () => {

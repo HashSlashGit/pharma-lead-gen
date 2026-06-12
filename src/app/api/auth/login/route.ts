@@ -65,16 +65,19 @@ export async function POST(req: NextRequest) {
       }
 
       const token = await createSessionToken(String(user._id), user.role, jwtSecret);
-      const res = NextResponse.json({ success: true, role: user.role });
+      const res = NextResponse.json({ success: true });
       res.cookies.set(SESSION_COOKIE, token, cookieOpts(SESSION_MAX_AGE_SECONDS));
       return res;
     } catch (err) {
       console.error('[auth/login] DB error:', err);
-      // Fall through to legacy auth if DB is unavailable
+      return NextResponse.json(
+        { error: 'Authentication service unavailable. Please try again shortly.' },
+        { status: 503 },
+      );
     }
   }
 
-  // ── Legacy single-password fallback ──────────────────────────────────────
+  // ── Legacy single-password fallback (no email provided) ──────────────────
   const appPassword = process.env.APP_PASSWORD;
   if (!appPassword) {
     return NextResponse.json({ error: 'Authentication is not configured on this server.' }, { status: 503 });
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest) {
   }
 
   const token = await createSessionToken('legacy', 'admin', jwtSecret);
-  const res = NextResponse.json({ success: true, role: 'admin' });
+  const res = NextResponse.json({ success: true });
   res.cookies.set(SESSION_COOKIE, token, cookieOpts(SESSION_MAX_AGE_SECONDS));
   return res;
 }

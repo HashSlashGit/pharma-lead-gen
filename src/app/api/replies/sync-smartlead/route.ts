@@ -25,6 +25,7 @@ import { classifyReply }                               from '@/lib/services/repl
 import { syncLeadStatusFromReply }                     from '@/lib/services/syncLeadStatusFromReply';
 import { runMailboxSync, type MailboxSyncResult }      from '@/lib/services/mailboxReplySync';
 import { removeNoReplyOnReply }                        from '@/lib/services/removeNoReplyOnReply';
+import { getSettings }                                 from '@/lib/services/settingsCache';
 import axios                                           from 'axios';
 
 export const dynamic = 'force-dynamic';
@@ -402,8 +403,9 @@ async function fetchAndProcessCampaignHistory(
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest): Promise<NextResponse<SyncResult>> {
-  const apiKey     = process.env.SMARTLEAD_API_KEY     ?? '';
-  const campaignId = process.env.SMARTLEAD_CAMPAIGN_ID ?? '';
+  const settings   = await getSettings();
+  const apiKey     = settings.smartleadApiKey     ?? '';
+  const campaignId = settings.smartleadCampaignId ?? '';
 
   if (!apiKey) {
     return NextResponse.json({
@@ -420,7 +422,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<SyncResult>> 
       duplicateDetails:  [],
       preview:           [],
       configured:        false,
-      message:           'SMARTLEAD_API_KEY must be set in environment variables.',
+      message:           'Smartlead API key not configured. Please add your Smartlead API key in Settings.',
     });
   }
 
@@ -852,7 +854,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<SyncResult>> 
     // ── Mailbox sync (runs after Smartlead sync if enabled) ───────────────────
 
     let mailboxResult: MailboxSyncResult = { enabled: false };
-    if (process.env.MAILBOX_SYNC_ENABLED === 'true') {
+    if (settings.mailboxEnabled) {
       try {
         mailboxResult = await runMailboxSync();
       } catch (mbErr) {

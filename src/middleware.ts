@@ -14,16 +14,6 @@ function isPublic(pathname: string): boolean {
   return ALWAYS_PUBLIC.some((p) => pathname === p || pathname.startsWith(p));
 }
 
-/** Dev-only pages — blocked with a redirect in production. */
-const DEV_ONLY_PATHS = ['/dev-tools', '/testing-checklist', '/production-checklist'];
-
-function isDevOnlyBlocked(pathname: string): boolean {
-  return (
-    process.env.NODE_ENV === 'production' &&
-    DEV_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p))
-  );
-}
-
 /**
  * Routes that require the admin role.
  * Server-side enforcement — do NOT rely on hidden UI alone.
@@ -81,12 +71,6 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
 
   if (isPublic(pathname)) return NextResponse.next();
-
-  if (isDevOnlyBlocked(pathname)) {
-    const url = req.nextUrl.clone();
-    url.pathname = '/dashboard';
-    return NextResponse.redirect(url);
-  }
 
   // ── Production safety: JWT_SECRET must be explicitly configured ───────────
   // A missing JWT_SECRET means sessions fall back to 'fallback-secret', which

@@ -13,9 +13,6 @@ if (isAtlas) {
   dns.setDefaultResultOrder('ipv4first');
 }
 
-console.log('[db] MongoDB URI loaded:', !!MONGODB_URI);
-console.log('[db] MongoDB mode:', dbMode);
-
 if (!MONGODB_URI) {
   throw new Error('MONGODB_URI environment variable is not set');
 }

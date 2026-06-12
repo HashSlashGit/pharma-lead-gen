@@ -6,6 +6,7 @@ import Product from '@/lib/models/Product';
 import { type ILead } from '@/lib/models/Lead';
 import mongoose from 'mongoose';
 import { draftReplyEmail } from '@/lib/services/claude';
+import { getSettings } from '@/lib/services/settingsCache';
 
 // Classifications allowed to receive an AI draft reply
 const ALLOWED_CLASSIFICATIONS = new Set([
@@ -26,6 +27,14 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid reply ID' }, { status: 400 });
     }
 
+    const settings = await getSettings();
+    if (!settings.claudeApiKey) {
+      return NextResponse.json(
+        { error: 'Claude AI is not configured. Add your Claude API key in Settings.' },
+        { status: 503 },
+      );
+    }
+
     await connectDB();
 
     const reply = await Reply.findById(id)
@@ -39,31 +48,22 @@ export async function POST(
     const lead = reply.leadId as ILead;
     const leadId = (lead._id as mongoose.Types.ObjectId).toString();
 
-    // ── Guard 1: classification must be actionable ───────────────────
     const classification = reply.classification ?? 'unclassified';
     if (!ALLOWED_CLASSIFICATIONS.has(classification)) {
       return NextResponse.json(
         { error: `AI drafts not allowed for classification: "${classification}"` },
-        { status: 422 }
+        { status: 422 },
       );
     }
 
-    // ── Guard 2: lead must have an email to reply to ─────────────────
     if (!lead.email) {
       return NextResponse.json({ error: 'Lead has no email address' }, { status: 422 });
     }
 
-    // ── Guard 3: draft already approved/sent ─────────────────────────
     if (reply.status === 'draft_approved') {
       return NextResponse.json({ error: 'Draft already approved and sent' }, { status: 409 });
     }
 
-    // ── Guard 4: CLAUDE_API_KEY must be configured ───────────────────
-    if (!process.env.CLAUDE_API_KEY) {
-      return NextResponse.json({ error: 'CLAUDE_API_KEY is not configured' }, { status: 503 });
-    }
-
-    // Build product context (first product — no AI lookup)
     const firstProduct = await Product.findOne()
       .select('name description')
       .lean<{ name: string; description?: string }>();
@@ -71,7 +71,6 @@ export async function POST(
       ? `${firstProduct.name}: ${firstProduct.description ?? ''}`
       : undefined;
 
-    // ── Call Claude (guarded, logged) ────────────────────────────────
     const draftBody = await draftReplyEmail({
       leadId,
       replyBody: reply.body,
@@ -82,7 +81,6 @@ export async function POST(
       productContext,
     });
 
-    // ── Create draft EmailLog ────────────────────────────────────────
     const subject = `Re: Our conversation — ${lead.companyName}`;
     const draftLog = await EmailLog.create({
       leadId: lead._id,
@@ -93,7 +91,6 @@ export async function POST(
       status: 'pending',
     });
 
-    // ── Update reply ─────────────────────────────────────────────────
     await Reply.findByIdAndUpdate(id, {
       status: 'draft_generated',
       aiDraftGenerated: true,

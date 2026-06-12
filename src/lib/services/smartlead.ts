@@ -136,8 +136,6 @@ async function addLeadToSmartleadCampaign(
       }
     );
 
-    console.log('[Smartlead] API response:', JSON.stringify(response.data, null, 2));
-
     // Smartlead can return HTTP 200 with ok:false in the body
     if (response.data?.ok === false) {
       return {
@@ -203,7 +201,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SmartleadSendR
       success: false,
       mode: 'no_key',
       status: 'ready_to_send_test',
-      message: 'SMARTLEAD_API_KEY is not configured. Email saved as draft. Configure the key to send.',
+      message: 'Smartlead API key is not configured. Email saved as draft. Add your API key in Settings to send.',
       preview: {
         to: params.leadEmail,
         subject: params.emailSubject,
@@ -228,17 +226,11 @@ export async function sendEmail(params: SendEmailParams): Promise<SmartleadSendR
       };
     }
 
-    console.log('[Smartlead DRY RUN] Would send:', {
-      to: params.leadEmail,
-      subject: params.emailSubject,
-      campaignId,
-    });
-
     return {
       success: true,
       mode: 'dry_run',
       status: 'ready_to_send_test',
-      message: `Dry run complete. Would add ${params.leadEmail} to campaign ${campaignId}. Set SMARTLEAD_DRY_RUN=false to send for real.`,
+      message: `Dry run complete. Would add ${params.leadEmail} to campaign ${campaignId}. Disable dry run in Settings to send for real.`,
       preview: {
         to: params.leadEmail,
         subject: params.emailSubject,
@@ -253,7 +245,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SmartleadSendR
       success: false,
       mode: 'live',
       status: 'failed',
-      message: 'SMARTLEAD_CAMPAIGN_ID is not set. Create a campaign in Smartlead and add the ID to .env.local.',
+      message: 'Smartlead Campaign ID is not configured. Create a campaign in Smartlead and add the ID in Settings.',
     };
   }
 
@@ -311,7 +303,7 @@ export async function sendCustomEmailViaSmartlead(
       mode: 'no_key',
       status: 'ready_to_send_test',
       sendMode: 'custom',
-      message: 'SMARTLEAD_API_KEY is not configured. Custom email saved as draft. Configure the key to send.',
+      message: 'Smartlead API key is not configured. Custom email saved as draft. Add your API key in Settings to send.',
       preview: {
         to: params.leadEmail,
         subject: params.emailSubject,
@@ -337,19 +329,12 @@ export async function sendCustomEmailViaSmartlead(
       };
     }
 
-    console.log('[Smartlead DRY RUN - Custom Email] Would send:', {
-      to: params.leadEmail,
-      subject: params.emailSubject,
-      bodyLength: params.emailBody.length,
-      bodyPreview: params.emailBody.slice(0, 500),
-    });
-
     return {
       success: true,
       mode: 'dry_run',
       status: 'ready_to_send_test',
       sendMode: 'custom',
-      message: `Dry run complete (Custom Email Mode). Would send custom email to ${params.leadEmail} with subject "${params.emailSubject}". Set SMARTLEAD_DRY_RUN=false to send for real.`,
+      message: `Dry run complete (Custom Email Mode). Would send custom email to ${params.leadEmail} with subject "${params.emailSubject}". Disable dry run in Settings to send for real.`,
       preview: {
         to: params.leadEmail,
         subject: params.emailSubject,
@@ -394,8 +379,6 @@ export async function sendCustomEmailViaSmartlead(
         timeout: 15000,
       }
     );
-
-    console.log('[Smartlead Custom Email] API response:', JSON.stringify(response.data, null, 2));
 
     const trackId = (response.data as Record<string, unknown> | null)
       ?.['data'] as Record<string, unknown> | undefined;
@@ -470,8 +453,6 @@ export async function fetchCampaignReplies(_campaignId: string): Promise<Smartle
   const { apiKey, isConfigured } = await getConfigAsync();
   if (!isConfigured) return [];
 
-  console.log('[Smartlead] fetchCampaignReplies — TODO: implement endpoint', { apiKey: '***' });
-  // TODO: GET /campaigns/{campaignId}/email-leads?api_key={key}&offset=0&limit=100
   return [];
 }
 

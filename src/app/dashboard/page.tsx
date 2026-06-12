@@ -209,8 +209,8 @@ export default function DashboardPage() {
             )}
             <div>
               <span className="font-semibold">Smartlead: </span>
-              {!stats.smartleadConfigured && 'Not configured — set SMARTLEAD_API_KEY to enable sending.'}
-              {stats.smartleadConfigured && stats.smartleadDryRun && 'Dry-run mode — emails validated but not sent. Set SMARTLEAD_DRY_RUN=false to go live.'}
+              {!stats.smartleadConfigured && 'Not configured — add your API key in Settings to enable sending.'}
+              {stats.smartleadConfigured && stats.smartleadDryRun && 'Dry-run mode — emails validated but not sent. Disable dry run in Settings to go live.'}
               {stats.smartleadConfigured && !stats.smartleadDryRun && 'Live mode — emails are being sent via Smartlead.'}
             </div>
           </div>

@@ -1,31 +1,34 @@
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
-import { getSmartleadMode } from '@/lib/services/smartlead';
+import { getSettings } from '@/lib/services/settingsCache';
 
 /**
  * GET /api/config
  * Returns non-sensitive runtime configuration flags for the frontend.
- * Never exposes API keys — only boolean flags derived from env vars.
+ * Never exposes API keys — only boolean flags and non-credential references.
  */
 export async function GET() {
-  const { isDryRun, isConfigured } = getSmartleadMode();
+  const s = await getSettings();
+
+  const isDryRun = s.smartleadDryRun;
+  const isConfigured = !!s.smartleadApiKey;
 
   return NextResponse.json({
     smartlead: {
       configured: isConfigured,
       dryRun: isDryRun,
-      campaignIdPresent: !!process.env.SMARTLEAD_CAMPAIGN_ID,
-      // Expose the campaign ID value — it is an internal Smartlead reference,
-      // not an authentication credential, so safe to show in the dashboard UI.
-      campaignId: process.env.SMARTLEAD_CAMPAIGN_ID ?? null,
-      fromEmailConfigured: !!process.env.SMARTLEAD_FROM_EMAIL,
+      campaignIdPresent: !!s.smartleadCampaignId,
+      campaignId: s.smartleadCampaignId ?? null,
+      fromEmailConfigured: !!s.smartleadFromEmail,
       sendButtonLabel: isDryRun ? 'Test Send' : 'Send via Smartlead',
       mode: !isConfigured ? 'no_key' : isDryRun ? 'dry_run' : 'live',
     },
-    claude: { configured: !!process.env.CLAUDE_API_KEY },
-    apollo: { configured: !!process.env.APOLLO_API_KEY },
+    claude: { configured: !!s.claudeApiKey },
+    apollo: { configured: !!s.apolloApiKey },
     apify: {
-      configured: !!(process.env.APIFY_API_TOKEN ?? process.env.APIFY_TOKEN),
-      websiteEnrichment: process.env.APIFY_WEBSITE_ENRICHMENT_ENABLED === 'true',
+      configured: !!s.apifyToken,
+      websiteEnrichment: s.apifyWebsiteEnrichment,
     },
   });
 }

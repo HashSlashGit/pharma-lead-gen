@@ -4,6 +4,7 @@ import EmailLog, { type IEmailLog } from '@/lib/models/EmailLog';
 import Lead, { type ILead } from '@/lib/models/Lead';
 import mongoose from 'mongoose';
 import { improveEmailDraft } from '@/lib/services/claude';
+import { getSettings } from '@/lib/services/settingsCache';
 
 export async function POST(
   _req: NextRequest,
@@ -15,9 +16,12 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid email log ID' }, { status: 400 });
     }
 
-    // ── Guard: CLAUDE_API_KEY must be present ────────────────────────
-    if (!process.env.CLAUDE_API_KEY) {
-      return NextResponse.json({ error: 'CLAUDE_API_KEY is not configured' }, { status: 503 });
+    const settings = await getSettings();
+    if (!settings.claudeApiKey) {
+      return NextResponse.json(
+        { error: 'Claude AI is not configured. Add your Claude API key in Settings.' },
+        { status: 503 },
+      );
     }
 
     await connectDB();
@@ -27,11 +31,10 @@ export async function POST(
       return NextResponse.json({ error: 'Email log not found' }, { status: 404 });
     }
 
-    // ── Guard: only improve unsent drafts ────────────────────────────
     if (emailLog.status !== 'pending') {
       return NextResponse.json(
         { error: `Cannot improve an email with status "${emailLog.status}" — only pending drafts can be improved` },
-        { status: 422 }
+        { status: 422 },
       );
     }
 
@@ -40,7 +43,6 @@ export async function POST(
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    // ── Call Claude (user-triggered, logged) ─────────────────────────
     const improvedBody = await improveEmailDraft({
       leadId: lead._id.toString(),
       body: emailLog.body,
@@ -49,7 +51,6 @@ export async function POST(
       category: lead.category,
     });
 
-    // ── Update the draft in DB ───────────────────────────────────────
     await EmailLog.findByIdAndUpdate(id, { body: improvedBody });
 
     return NextResponse.json({ success: true, body: improvedBody });

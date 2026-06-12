@@ -21,9 +21,6 @@ import {
   FileText,
   Layers,
   Shield,
-  FlaskConical,
-  ClipboardCheck,
-  Rocket,
 } from 'lucide-react';
 
 interface NavItem {
@@ -77,12 +74,6 @@ const navGroups: { label: string; items: NavItem[] }[] = [
 const adminNavItems: NavItem[] = [
   { href: '/settings', label: 'Settings', icon: Settings, exact: false },
   { href: '/admin/users', label: 'User Management', icon: Shield, exact: true },
-];
-
-const devNavItems: NavItem[] = [
-  { href: '/dev-tools', label: 'Dev Tools', icon: FlaskConical, exact: true },
-  { href: '/testing-checklist', label: 'QA Checklist', icon: ClipboardCheck, exact: true },
-  { href: '/production-checklist', label: 'Prod Checklist', icon: Rocket, exact: true },
 ];
 
 function LogoutButton() {
@@ -177,33 +168,6 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* Dev section — hidden in production */}
-        {process.env.NODE_ENV !== 'production' && (
-          <div>
-            <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest px-3 mb-1.5">
-              Dev
-            </p>
-            <div className="space-y-0.5">
-              {devNavItems.map((item) => {
-                const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      active
-                        ? 'bg-violet-600 text-white'
-                        : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
-                    }`}
-                  >
-                    <item.icon size={16} />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </nav>
 
       {/* Footer */}
