@@ -67,7 +67,13 @@
       "Bash(grep -v \"comment\\\\|//\")",
       "Bash(npx tsx *)",
       "Bash(python3 /tmp/write_readme.py)",
-      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\Zuhayr\\\\pharma-lead-gen\\\\README.md\"\\).Count)"
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\Zuhayr\\\\pharma-lead-gen\\\\README.md\"\\).Count)",
+      "Bash(rm -f \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/dev/mock-reply/route.ts\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/dev/mongo-diagnose/route.ts\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/dev/reset/route.ts\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/dev/seed/route.ts\")",
+      "Bash(rm -rf \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/dev\")",
+      "Bash(rm -f \"C:/Users/Zuhayr/pharma-lead-gen/src/app/dev-tools/page.tsx\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/production-checklist/page.tsx\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/testing-checklist/page.tsx\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/production-check/route.ts\")",
+      "Bash(rm -rf \"C:/Users/Zuhayr/pharma-lead-gen/src/app/dev-tools\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/production-checklist\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/testing-checklist\")",
+      "Bash(git stash *)",
+      "Bash(awk '{print $NF}')"
     ]
   }
 }
