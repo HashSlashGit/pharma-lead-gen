@@ -51,9 +51,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<Record<string, { mode: string; status: string; message?: string }>>({});
 
-  // Smartlead config (button label)
   const [sendButtonLabel, setSendButtonLabel] = useState('Send Email');
-  const [isDryRun, setIsDryRun] = useState(true);
+  const [isDryRun, setIsDryRun] = useState(false);
 
   // Status update
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -75,8 +74,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     fetch('/api/config')
       .then((r) => r.json())
       .then((cfg) => {
-        setSendButtonLabel(cfg.smartlead?.sendButtonLabel ?? 'Send Email');
-        setIsDryRun(cfg.smartlead?.dryRun ?? true);
+        setSendButtonLabel(cfg.gmail?.sendButtonLabel ?? 'Send via Gmail');
+        setIsDryRun(!cfg.gmail?.connected);
       })
       .catch(() => {});
   }, [id]);
@@ -275,7 +274,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                           <p className="text-xs text-slate-400">Test done — click to send for real</p>
                         )}
                         {isTestReady && !actionResult && isDryRun && (
-                          <p className="text-xs text-slate-400">Test completed. Set SMARTLEAD_DRY_RUN=false to send for real.</p>
+                          <p className="text-xs text-slate-400">No Gmail account connected — go to Settings to connect.</p>
                         )}
                       </div>
 
@@ -287,7 +286,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : 'bg-rose-50 text-rose-700 border-rose-200'
                         }`}>
-                          {actionResult.status === 'sent' && <><CheckCircle size={12} className="inline mr-1" /> Sent via Smartlead</>}
+                          {actionResult.status === 'sent' && <><CheckCircle size={12} className="inline mr-1" /> Sent via Gmail</>}
                           {actionResult.status === 'ready_to_send_test' && <><FlaskConical size={12} className="inline mr-1" /> {actionResult.message}</>}
                           {actionResult.status === 'failed' && <><AlertTriangle size={12} className="inline mr-1" /> {actionResult.message}</>}
                         </div>

@@ -14,9 +14,12 @@ function LoginForm() {
 
   useEffect(() => {
     const from = searchParams.get('from') ?? '/dashboard';
-    fetch('/api/dashboard/stats', { method: 'HEAD' }).then((r) => {
-      if (r.ok || r.status !== 401) router.replace(from);
-    }).catch(() => {});
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { authenticated?: boolean } | null) => {
+        if (d?.authenticated) router.replace(from);
+      })
+      .catch(() => {});
   }, [router, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {

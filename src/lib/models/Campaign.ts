@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 
 export interface ICampaign extends Document {
   name: string;
@@ -7,6 +7,7 @@ export interface ICampaign extends Document {
   status: 'draft' | 'active' | 'paused' | 'completed';
   emailsSent: number;
   replies: number;
+  assignedInboxId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,7 +23,8 @@ const CampaignSchema = new Schema<ICampaign>(
       default: 'draft',
     },
     emailsSent: { type: Number, default: 0 },
-    replies: { type: Number, default: 0 },
+    replies:    { type: Number, default: 0 },
+    assignedInboxId: { type: Schema.Types.ObjectId, ref: 'InboxAccount' },
   },
   { timestamps: true }
 );

@@ -124,8 +124,11 @@ export interface DashboardStats {
   replies: number;
   claudeCallsToday: number;
   estimatedCostToday: number;
-  smartleadDryRun: boolean;
-  smartleadConfigured: boolean;
+  gmailConfigured: boolean;
+  gmailEmail: string | null;
+  gmailConnectedAccounts: number;
+  gmailTotalCapacity: number;
+  gmailDailyUsage: number;
   apolloLeadsToday: number;
   apolloLeadsTotal: number;
   apifyLeadsToday: number;
@@ -246,7 +249,7 @@ export interface ReplyRow {
   receivedAt?: string;
   createdAt: string;
   updatedAt: string;
-  source?: 'webhook' | 'smartlead_sync' | 'mailbox_sync' | 'manual' | 'gmail';
+  source?: 'webhook' | 'mailbox_sync' | 'manual' | 'gmail';
   gmailMessageId?: string;
   gmailThreadId?: string;
   lead?: {

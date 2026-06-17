@@ -9,9 +9,10 @@ import Product from '@/lib/models/Product';
 import EmailLog from '@/lib/models/EmailLog';
 import mongoose from 'mongoose';
 import { z } from 'zod';
-import { sendCustomEmailViaSmartlead } from '@/lib/services/smartlead';
+import { sendCustomEmailViaGmail } from '@/lib/services/gmailSender';
 import { formatEmailBodyAsHtml } from '@/lib/utils/emailFormatting';
 import { markLeadWaitingForReply } from '@/lib/utils/noReplySync';
+import { gmailDelay } from '@/lib/services/gmailQueue';
 
 const MAX_PER_SEND = 50;
 const SKIP_STATUSES = new Set(['do_not_contact', 'rejected', 'no_response']);
@@ -90,7 +91,6 @@ export async function POST(req: NextRequest) {
 
     const validLeadIds = leadIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
 
-    // Verify leads belong to this campaign
     const campaignLeadDocs = await CampaignLead.find({
       campaignId,
       leadId: { $in: validLeadIds },
@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    let sendIndex = 0;
 
     for (const leadId of validLeadIds) {
       if (!campaignLeadSet.has(leadId)) {
@@ -144,27 +145,31 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      // Throttle: 1500ms between sends (skip delay before first actual send)
+      if (sendIndex > 0) {
+        await gmailDelay();
+      }
+      sendIndex++;
+
       const renderedSubject = renderVars(subject, lead, product);
-      const renderedBody = renderVars(emailBody, lead, product);
+      const renderedBody    = renderVars(emailBody, lead, product);
 
       const emailLog = await EmailLog.create({
-        leadId: lead._id,
+        leadId:    lead._id,
         campaignId,
-        type: 'initial',
-        subject: renderedSubject,
-        body: renderedBody,
-        status: 'pending',
-        sendMode: 'custom',
+        type:      'initial',
+        subject:   renderedSubject,
+        body:      renderedBody,
+        status:    'pending',
+        sendMode:  'custom',
         leadEmail: lead.email,
       });
 
-      const result = await sendCustomEmailViaSmartlead({
-        leadEmail: lead.email,
-        companyName: lead.companyName,
-        phone: lead.phone,
-        website: lead.website,
+      const result = await sendCustomEmailViaGmail({
+        leadEmail:    lead.email,
         emailSubject: renderedSubject,
-        emailBody: formatEmailBodyAsHtml(renderedBody),
+        emailBody:    formatEmailBodyAsHtml(renderedBody),
+        campaignId,
       });
 
       if (result.status === 'sent' || result.status === 'ready_to_send_test') {
@@ -174,22 +179,25 @@ export async function POST(req: NextRequest) {
         };
         if (result.status === 'sent' && result.data) {
           const d = result.data as Record<string, unknown>;
-          const trackId = d['trackId'] ?? d['track_id'];
-          if (trackId) logUpdate['smartleadTrackId'] = String(trackId);
+          if (d['messageId']) logUpdate['gmailMessageId'] = String(d['messageId']);
+          if (d['threadId'])  logUpdate['gmailThreadId']  = String(d['threadId']);
+          if (d['mailboxId']) logUpdate['mailboxId']       = new mongoose.Types.ObjectId(String(d['mailboxId']));
         }
         await EmailLog.findByIdAndUpdate(emailLog._id, logUpdate);
+
         if (result.status === 'sent') {
           await Lead.findByIdAndUpdate(lead._id, {
             lastContactedAt: new Date(),
             status: 'contacted',
           });
         }
-        // ── NoReply tracking: upsert for both live and test sends ────────
+
         await markLeadWaitingForReply({
-          leadId: lead._id,
+          leadId:     lead._id,
           emailLogId: emailLog._id as mongoose.Types.ObjectId,
-          sentAt: new Date(),
+          sentAt:     new Date(),
         });
+
         results.push({ leadId, email: lead.email, status: 'sent' });
         sent++;
       } else {

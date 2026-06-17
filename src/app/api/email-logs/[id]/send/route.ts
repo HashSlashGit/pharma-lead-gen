@@ -3,12 +3,12 @@ import { connectDB } from '@/lib/db/mongoose';
 import EmailLog from '@/lib/models/EmailLog';
 import Lead from '@/lib/models/Lead';
 import mongoose from 'mongoose';
-import { sendEmail, sendCustomEmailViaSmartlead } from '@/lib/services/smartlead';
+import { sendCustomEmailViaGmail } from '@/lib/services/gmailSender';
+import { sendEmailViaGmail } from '@/lib/services/gmailCampaignSender';
 import { FOLLOWUP_GAPS_DAYS, MAX_FOLLOWUPS } from '@/lib/utils/followupScheduler';
 import { formatEmailBodyAsHtml } from '@/lib/utils/emailFormatting';
 import { markLeadWaitingForReply } from '@/lib/utils/noReplySync';
 
-// Statuses that should never receive an email
 const BLOCKED_STATUSES = new Set([
   'do_not_contact',
   'no_response',
@@ -45,12 +45,10 @@ export async function POST(
       return NextResponse.json({ error: 'Email log not found' }, { status: 404 });
     }
 
-    // ── Guard: already sent ──────────────────────────────────────────
     if (emailLog.status === 'sent') {
       return NextResponse.json({ error: 'Email already sent' }, { status: 409 });
     }
 
-    // ── Validate required fields ─────────────────────────────────────
     if (!emailLog.subject) {
       return NextResponse.json(
         { success: false, error: 'Email subject is missing from the draft' },
@@ -72,7 +70,6 @@ export async function POST(
       return NextResponse.json({ error: 'Lead email address not found' }, { status: 404 });
     }
 
-    // ── Guard: blocked lead status ───────────────────────────────────
     if (BLOCKED_STATUSES.has(lead.status)) {
       return NextResponse.json(
         { error: `Cannot send to this lead — status is "${lead.status}"` },
@@ -80,50 +77,58 @@ export async function POST(
       );
     }
 
-    // ── Call smartlead service (handles no-key / dry-run / live) ─────
+    // For follow-ups, find the original sent email to reuse the same mailbox
+    let preferredMailboxId: string | undefined;
+    if (emailLog.type === 'follow_up' && emailLog.campaignId) {
+      const originalLog = await EmailLog.findOne({
+        leadId:     emailLog.leadId,
+        campaignId: emailLog.campaignId,
+        type:       'initial',
+        status:     'sent',
+      })
+        .sort({ sentAt: -1 })
+        .select('mailboxId')
+        .lean();
+      preferredMailboxId = originalLog?.mailboxId?.toString();
+    }
+
+    const campaignId = emailLog.campaignId?.toString();
+
     const emailParams = {
-      leadEmail: lead.email,
-      companyName: lead.companyName,
-      phone: lead.phone,
-      website: lead.website,
+      leadEmail:    lead.email,
+      companyName:  lead.companyName,
+      phone:        lead.phone,
+      website:      lead.website,
       emailSubject: emailLog.subject,
-      emailBody: emailLog.body,
+      emailBody:    formatEmailBodyAsHtml(emailLog.body),
+      campaignId,
     };
 
     const result =
       sendMode === 'custom'
-        ? await sendCustomEmailViaSmartlead({
-            ...emailParams,
-            emailBody: formatEmailBodyAsHtml(emailLog.body),
-          })
-        : await sendEmail(emailParams);
+        ? await sendCustomEmailViaGmail({ ...emailParams, preferredMailboxId })
+        : await sendEmailViaGmail({ ...emailParams, preferredMailboxId });
 
     const now = new Date();
     const isFollowUp = emailLog.type === 'follow_up';
 
     if (result.status === 'sent') {
-      // ── Live send succeeded ────────────────────────────────────────
       const sentUpdate: Record<string, unknown> = {
         status:    'sent',
         sentAt:    now,
         sendMode,
         leadEmail: lead.email,
       };
-      // Persist custom send tracking fields so reply sync can correlate later
-      if (sendMode === 'custom' && result.data != null) {
+
+      if (result.data != null) {
         const dataObj = result.data as Record<string, unknown>;
-        const trackId = dataObj['trackId'] ?? dataObj['track_id'];
-        if (trackId) sentUpdate['smartleadTrackId'] = String(trackId);
-        // Store sanitized response (no API key, no full body)
-        sentUpdate['smartleadResponse'] = {
-          trackId:   trackId ?? null,
-          success:   dataObj['success']   ?? null,
-          message:   dataObj['message']   ?? null,
-        };
+        if (dataObj['messageId']) sentUpdate['gmailMessageId'] = String(dataObj['messageId']);
+        if (dataObj['threadId'])  sentUpdate['gmailThreadId']  = String(dataObj['threadId']);
+        if (dataObj['mailboxId']) sentUpdate['mailboxId']       = new mongoose.Types.ObjectId(String(dataObj['mailboxId']));
       }
+
       await EmailLog.findByIdAndUpdate(id, sentUpdate);
 
-      // Only increment followUpCount for follow-up emails, not initial
       const leadUpdate: Record<string, unknown> = {
         lastContactedAt: now,
         status: 'contacted',
@@ -132,7 +137,6 @@ export async function POST(
         leadUpdate.$inc = { followUpCount: 1 };
         leadUpdate.nextFollowUpAt = calcNextFollowUpAt(lead.followUpCount);
       } else {
-        // Initial email: schedule Day 1 follow-up
         const nextDate = new Date();
         nextDate.setDate(nextDate.getDate() + FOLLOWUP_GAPS_DAYS[0]);
         leadUpdate.nextFollowUpAt = nextDate;
@@ -140,11 +144,10 @@ export async function POST(
 
       await Lead.findByIdAndUpdate(emailLog.leadId, leadUpdate);
 
-      // ── NoReply tracking: upsert active record ─────────────────────
       await markLeadWaitingForReply({
-        leadId: emailLog.leadId,
+        leadId:     emailLog.leadId,
         emailLogId: emailLog._id as mongoose.Types.ObjectId,
-        sentAt: now,
+        sentAt:     now,
       });
 
       return NextResponse.json({
@@ -157,14 +160,12 @@ export async function POST(
     }
 
     if (result.status === 'ready_to_send_test') {
-      // ── Dry run or no-key: mark as test-ready ─────────────────────
       await EmailLog.findByIdAndUpdate(id, {
         status:    'ready_to_send_test',
         sendMode,
         leadEmail: lead.email,
       });
 
-      // Still update lastContactedAt so follow-up timing works in dry-run testing
       const leadUpdate: Record<string, unknown> = { lastContactedAt: now };
       if (isFollowUp) {
         leadUpdate.$inc = { followUpCount: 1 };
@@ -176,11 +177,10 @@ export async function POST(
       }
       await Lead.findByIdAndUpdate(emailLog.leadId, leadUpdate);
 
-      // ── NoReply tracking: upsert active record (test sends count as outreach) ──
       await markLeadWaitingForReply({
-        leadId: emailLog.leadId,
+        leadId:     emailLog.leadId,
         emailLogId: id,
-        sentAt: new Date(),
+        sentAt:     new Date(),
       });
 
       return NextResponse.json({
@@ -193,8 +193,7 @@ export async function POST(
       });
     }
 
-    // ── Send failed ──────────────────────────────────────────────────
-    console.error('[send] Smartlead rejected:', result.message, 'rawResponse:', JSON.stringify(result.rawResponse));
+    console.error('[send] Gmail send rejected:', result.message);
     await EmailLog.findByIdAndUpdate(id, { status: 'failed' });
 
     return NextResponse.json(
@@ -213,7 +212,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        mode: process.env.SMARTLEAD_DRY_RUN !== 'false' ? 'dry_run' : 'live',
+        mode: 'live',
         status: 'failed',
         message: 'Failed to process send request',
         error: err instanceof Error ? err.message : String(err),

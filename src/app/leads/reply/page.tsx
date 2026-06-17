@@ -40,11 +40,10 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  webhook:          'Webhook',
-  smartlead_sync:   'Smartlead',
-  mailbox_sync:     'Mailbox',
-  manual:           'Manual',
-  gmail:            'Gmail',
+  webhook:      'Webhook',
+  mailbox_sync: 'Mailbox',
+  manual:       'Manual',
+  gmail:        'Gmail',
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -236,7 +235,7 @@ export default function ReplyInboxPage() {
             <MessageSquare size={24} className="text-slate-300" />
           </div>
           <p className="text-slate-500 font-medium mb-1">No replies in this view</p>
-          <p className="text-slate-400 text-sm">Replies are captured from Gmail, Smartlead, and mailbox sync.</p>
+          <p className="text-slate-400 text-sm">Replies are captured from Gmail and mailbox sync.</p>
         </div>
       )}
 

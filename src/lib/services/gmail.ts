@@ -109,7 +109,10 @@ export async function getGmailOAuthUrl(): Promise<string> {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/gmail.readonly',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.send',
+    ].join(' '),
     access_type: 'offline',
     prompt: 'consent',
   });
@@ -287,4 +290,57 @@ export async function fetchRecentGmailReplies(
   }
 
   return replies;
+}
+
+// ── Send ──────────────────────────────────────────────────────────────────────
+
+export interface GmailSendResult {
+  messageId: string;
+  threadId: string;
+}
+
+/**
+ * Send a single email via the Gmail REST API.
+ * Constructs a minimal RFC 2822 message, base64url-encodes it, and POSTs
+ * to /gmail/v1/users/me/messages/send using the supplied access token.
+ *
+ * Requires the token to carry the gmail.send scope.
+ */
+export async function sendGmailMessage(params: {
+  accessToken: string;
+  to: string;
+  subject: string;
+  body: string;
+  from?: string;
+}): Promise<GmailSendResult> {
+  const { accessToken, to, subject, body, from } = params;
+
+  const headerLines: string[] = [];
+  if (from) headerLines.push(`From: ${from}`);
+  headerLines.push(
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=utf-8',
+  );
+
+  const raw = `${headerLines.join('\r\n')}\r\n\r\n${body}`;
+  const encoded = Buffer.from(raw, 'utf-8').toString('base64url');
+
+  const res = await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw: encoded }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gmail send failed (${res.status}): ${errText}`);
+  }
+
+  const data = (await res.json()) as { id: string; threadId: string };
+  return { messageId: data.id, threadId: data.threadId };
 }

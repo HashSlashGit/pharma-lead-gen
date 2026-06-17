@@ -33,7 +33,16 @@ interface HealthData {
   mode: 'local' | 'atlas' | 'unknown';
   canConnect: boolean;
   ping: 'OK' | 'Failed';
-  smartlead: { configured: boolean; dryRun: boolean; campaignIdPresent: boolean };
+  gmail: {
+    oauthConfigured: boolean;
+    connected: boolean;
+    email: string | null;
+    connectedAccounts: number;
+    activeAccounts: number;
+    totalCapacity: number;
+    dailyUsage: number;
+    accounts: Array<{ email: string; isActive: boolean; accountType: string; dailySendCount: number; limit: number }>;
+  };
 }
 
 function SectionLabel({ label }: { label: string }) {
@@ -76,17 +85,23 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    // All setState calls are inside async .then()/.catch()/.finally() — not synchronous in the effect body
-    fetch('/api/dashboard/stats')
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    fetch('/api/dashboard/stats', { signal })
       .then((r) => r.json())
       .then(applyStatsData)
-      .catch(() => setError('Failed to load stats'))
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.name !== 'AbortError') setError('Failed to load stats');
+      })
       .finally(() => setLoading(false));
 
-    fetch('/api/health')
+    fetch('/api/health', { signal })
       .then((r) => r.json())
       .then((data: HealthData) => setHealth(data))
       .catch(() => null);
+
+    return () => controller.abort();
   }, []);
 
   const readinessWarnings: { text: string; link?: { href: string; label: string } }[] = [];
@@ -194,25 +209,75 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Smartlead status */}
-          <div className={`rounded-2xl border p-4 flex items-center gap-3 text-sm ${
-            stats.smartleadConfigured && !stats.smartleadDryRun
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : stats.smartleadConfigured
-              ? 'bg-amber-50 border-amber-200 text-amber-800'
-              : 'bg-slate-50 border-slate-200 text-slate-600'
-          }`}>
-            {stats.smartleadConfigured && !stats.smartleadDryRun ? (
-              <Wifi size={15} className="shrink-0" />
+          {/* Gmail Inboxes */}
+          <div>
+            <SectionLabel label="Gmail Inboxes" />
+            {!stats.gmailConfigured ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-center gap-3 text-sm text-slate-600">
+                <WifiOff size={15} className="shrink-0" />
+                <span>No Gmail account connected — go to <Link href="/settings" className="underline font-medium">Settings</Link> to connect a Gmail account.</span>
+              </div>
             ) : (
-              <WifiOff size={15} className="shrink-0" />
+              <div className="space-y-3">
+                {/* Aggregate capacity bar */}
+                {stats.gmailTotalCapacity > 0 && (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 text-emerald-800 text-sm font-semibold">
+                        <Wifi size={14} />
+                        {stats.gmailConnectedAccounts} inbox{stats.gmailConnectedAccounts !== 1 ? 'es' : ''} connected
+                      </div>
+                      <span className="text-xs text-emerald-700">
+                        {stats.gmailDailyUsage} / {stats.gmailTotalCapacity} sent today
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-emerald-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all"
+                        style={{ width: `${Math.min(100, (stats.gmailDailyUsage / stats.gmailTotalCapacity) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {/* Per-account rows (from health data) */}
+                {health?.gmail?.accounts && health.gmail.accounts.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {health.gmail.accounts.map((acc) => {
+                      const pct = acc.limit > 0 ? Math.min(100, (acc.dailySendCount / acc.limit) * 100) : 0;
+                      return (
+                        <div
+                          key={acc.email}
+                          className={`rounded-xl border p-3 text-sm ${
+                            acc.isActive
+                              ? 'bg-white border-slate-200'
+                              : 'bg-slate-50 border-slate-200 opacity-60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="font-medium text-slate-700 truncate">{acc.email}</span>
+                            <span className="text-xs text-slate-500 shrink-0 ml-2">
+                              {acc.dailySendCount} / {acc.limit}
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                pct >= 90 ? 'bg-rose-400' : pct >= 70 ? 'bg-amber-400' : 'bg-emerald-400'
+                              }`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs text-slate-400 capitalize">{acc.accountType}</span>
+                            {!acc.isActive && <span className="text-xs text-slate-400">inactive</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
-            <div>
-              <span className="font-semibold">Smartlead: </span>
-              {!stats.smartleadConfigured && 'Not configured — add your API key in Settings to enable sending.'}
-              {stats.smartleadConfigured && stats.smartleadDryRun && 'Dry-run mode — emails validated but not sent. Disable dry run in Settings to go live.'}
-              {stats.smartleadConfigured && !stats.smartleadDryRun && 'Live mode — emails are being sent via Smartlead.'}
-            </div>
           </div>
 
           {/* Management */}

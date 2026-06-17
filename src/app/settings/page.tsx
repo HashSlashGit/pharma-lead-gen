@@ -26,10 +26,10 @@ interface HealthData {
   claude: 'configured' | 'missing';
   apollo: 'configured' | 'missing';
   apify: 'configured' | 'missing';
-  smartlead: {
-    configured: boolean;
-    dryRun: boolean;
-    campaignIdPresent: boolean;
+  gmail: {
+    oauthConfigured: boolean;
+    connected: boolean;
+    email: string | null;
   };
   websiteEnrichment: boolean;
 }
@@ -256,24 +256,20 @@ export default function SettingsPage() {
   const apolloLevel: StatusLevel = health?.apollo === 'configured' ? 'ok' : 'off';
   const apifyLevel: StatusLevel = health?.apify === 'configured' ? 'ok' : 'off';
 
-  const smartleadLevel: StatusLevel = !health?.smartlead.configured
+  const gmailLevel: StatusLevel = !health?.gmail.oauthConfigured
     ? 'off'
-    : !health.smartlead.campaignIdPresent
-    ? 'error'
-    : health.smartlead.dryRun
+    : !health.gmail.connected
     ? 'warn'
     : 'ok';
 
-  const smartleadLabel = !health?.smartlead.configured
-    ? 'Missing'
-    : !health.smartlead.campaignIdPresent
-    ? 'No Campaign'
-    : health.smartlead.dryRun
-    ? 'Test Mode'
-    : 'Live';
+  const gmailLabel = !health?.gmail.oauthConfigured
+    ? 'Not Configured'
+    : !health.gmail.connected
+    ? 'Not Connected'
+    : 'Connected';
 
   const overallReady =
-    (health?.canConnect === true) && (health?.smartlead.configured === true);
+    (health?.canConnect === true) && (health?.gmail.connected === true);
 
   return (
     <AppShell>
@@ -436,44 +432,38 @@ export default function SettingsPage() {
               }
             />
 
-            {/* Smartlead */}
+            {/* Gmail Sending */}
             <ServiceCard
               icon={Mail}
-              iconColor="text-rose-600 bg-rose-50"
-              title="Smartlead (Email Sending)"
-              level={smartleadLevel}
-              statusLabel={smartleadLabel}
+              iconColor="text-blue-600 bg-blue-50"
+              title="Gmail (Email Sending)"
+              level={gmailLevel}
+              statusLabel={gmailLabel}
               rows={[
                 {
-                  label: 'API Key',
-                  level: health.smartlead.configured ? 'ok' : 'off',
-                  value: health.smartlead.configured ? 'Present' : 'Missing',
+                  label: 'OAuth Credentials',
+                  level: health.gmail.oauthConfigured ? 'ok' : 'off',
+                  value: health.gmail.oauthConfigured ? 'Configured' : 'Missing',
                 },
                 {
-                  label: 'Send Mode',
-                  level: !health.smartlead.configured ? 'off' : health.smartlead.dryRun ? 'warn' : 'ok',
-                  value: !health.smartlead.configured
-                    ? '—'
-                    : health.smartlead.dryRun
-                    ? 'Dry Run (test only — no real emails sent)'
-                    : 'Live (real emails will be sent)',
-                },
-                {
-                  label: 'Campaign ID',
-                  level: health.smartlead.campaignIdPresent ? 'ok' : 'off',
-                  value: health.smartlead.campaignIdPresent ? 'Present' : 'Missing — required for sending',
+                  label: 'Connected Account',
+                  level: health.gmail.connected ? 'ok' : 'off',
+                  value: health.gmail.email ?? (health.gmail.connected ? 'Connected' : 'Not connected'),
                 },
               ]}
-              envVars={['SMARTLEAD_API_KEY', 'SMARTLEAD_DRY_RUN', 'SMARTLEAD_CAMPAIGN_ID']}
+              envVars={['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI']}
               instructions={
-                !health.smartlead.configured || !health.smartlead.campaignIdPresent
+                !health.gmail.oauthConfigured
                   ? [
-                      'Sign up at smartlead.ai and get your API key from Settings → API Key.',
-                      'Add SMARTLEAD_API_KEY to your environment variables.',
-                      'Create a campaign in Smartlead — copy its ID from the URL (/campaigns/{id}).',
-                      'Add SMARTLEAD_CAMPAIGN_ID to your environment variables.',
-                      'Set SMARTLEAD_DRY_RUN=true to test without sending real emails.',
-                      'Switch to SMARTLEAD_DRY_RUN=false when ready to go live.',
+                      'Go to console.cloud.google.com → APIs & Services → Credentials.',
+                      'Create an OAuth 2.0 Client ID (Web application type).',
+                      'Add your redirect URI: https://your-app.vercel.app/api/gmail/callback',
+                      'Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to environment variables.',
+                      'Then click "Connect Gmail" in the Gmail Inbox Sync section below.',
+                    ]
+                  : !health.gmail.connected
+                  ? [
+                      'OAuth credentials are set. Click "Connect Gmail" in the Gmail Inbox Sync section below to authorize.',
                     ]
                   : undefined
               }
@@ -626,11 +616,10 @@ APP_URL=https://your-app.vercel.app
 
 # ── Integrations ──────────────────────────────────────────
 CLAUDE_API_KEY=sk-ant-...
-SMARTLEAD_API_KEY=...
-SMARTLEAD_CAMPAIGN_ID=...
-SMARTLEAD_DRY_RUN=true
 APOLLO_API_KEY=...
 APIFY_API_TOKEN=...
+
+# ── Gmail OAuth (sending + reply sync) ────────────────────
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=https://your-app.vercel.app/api/gmail/callback`}
@@ -646,11 +635,11 @@ GOOGLE_REDIRECT_URI=https://your-app.vercel.app/api/gmail/callback`}
           <ol className="px-5 py-4 space-y-3 text-sm text-slate-600 list-none">
             {[
               { step: '1', text: 'Set MONGODB_URI — all data is stored here. The app will not start without it.' },
-              { step: '2', text: 'Set SMARTLEAD_DRY_RUN=true and confirm Test Send works on the Compose page.' },
-              { step: '3', text: 'Create a campaign in Smartlead and set SMARTLEAD_CAMPAIGN_ID.' },
+              { step: '2', text: 'Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI from Google Cloud Console.' },
+              { step: '3', text: 'Click "Connect Gmail" in the Gmail Inbox Sync section to authorize the sending account.' },
               { step: '4', text: 'Import a few leads via CSV or the Apollo search to verify the pipeline.' },
               { step: '5', text: 'Optionally add CLAUDE_API_KEY and test "Personalize with AI" on a qualified lead.' },
-              { step: '6', text: 'When ready for real sends, set SMARTLEAD_DRY_RUN=false.' },
+              { step: '6', text: 'Send a test email from the Compose page to confirm Gmail sending is working.' },
             ].map(({ step, text }) => (
               <li key={step} className="flex gap-3">
                 <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">

@@ -9,36 +9,39 @@ export interface IEmailLog extends Document {
   body: string;
   status: 'pending' | 'ready_to_send_test' | 'sent' | 'failed' | 'opened' | 'clicked';
   sentAt?: Date;
-  /** 'campaign' = added to Smartlead campaign sequence; 'custom' = direct single send */
+  /** 'campaign' = direct Gmail send (campaign mode); 'custom' = direct single send */
   sendMode?: 'campaign' | 'custom';
   /** Lead email address at time of send (denormalized for reply sync lookups) */
   leadEmail?: string;
-  /** trackId returned by Smartlead /send-email/initiate for custom sends */
-  smartleadTrackId?: string;
-  /** Raw Smartlead API response for custom sends (stored for diagnostics) */
-  smartleadResponse?: unknown;
+  /** Gmail message ID returned by the Gmail API after a successful send */
+  gmailMessageId?: string;
+  /** Gmail thread ID returned by the Gmail API after a successful send */
+  gmailThreadId?: string;
+  /** InboxAccount that sent this email — used to route follow-ups through the same mailbox */
+  mailboxId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const EmailLogSchema = new Schema<IEmailLog>(
   {
-    leadId: { type: Schema.Types.ObjectId, ref: 'Lead', required: true },
-    campaignId: { type: Schema.Types.ObjectId, ref: 'Campaign' },
-    replyId: { type: Schema.Types.ObjectId, ref: 'Reply' },
-    type: { type: String, enum: ['initial', 'follow_up', 'reply'], required: true },
-    subject: { type: String, required: true },
-    body: { type: String, required: true },
+    leadId:    { type: Schema.Types.ObjectId, ref: 'Lead', required: true },
+    campaignId:{ type: Schema.Types.ObjectId, ref: 'Campaign' },
+    replyId:   { type: Schema.Types.ObjectId, ref: 'Reply' },
+    type:      { type: String, enum: ['initial', 'follow_up', 'reply'], required: true },
+    subject:   { type: String, required: true },
+    body:      { type: String, required: true },
     status: {
       type: String,
       enum: ['pending', 'ready_to_send_test', 'sent', 'failed', 'opened', 'clicked'],
       default: 'pending',
     },
-    sentAt: { type: Date },
-    sendMode: { type: String, enum: ['campaign', 'custom'], trim: true },
-    leadEmail: { type: String, trim: true, lowercase: true },
-    smartleadTrackId: { type: String, trim: true },
-    smartleadResponse: { type: Schema.Types.Mixed },
+    sentAt:          { type: Date },
+    sendMode:        { type: String, enum: ['campaign', 'custom'], trim: true },
+    leadEmail:       { type: String, trim: true, lowercase: true },
+    gmailMessageId:  { type: String, trim: true },
+    gmailThreadId:   { type: String, trim: true },
+    mailboxId:       { type: Schema.Types.ObjectId, ref: 'InboxAccount' },
   },
   { timestamps: true }
 );
@@ -49,9 +52,11 @@ EmailLogSchema.index({ status: 1 });
 EmailLogSchema.index({ type: 1, status: 1 });
 EmailLogSchema.index({ sendMode: 1, status: 1 }, { sparse: true });
 EmailLogSchema.index({ leadEmail: 1 }, { sparse: true });
-EmailLogSchema.index({ smartleadTrackId: 1 }, { sparse: true });
+EmailLogSchema.index({ gmailMessageId: 1 }, { sparse: true });
+EmailLogSchema.index({ gmailThreadId: 1 }, { sparse: true });
 EmailLogSchema.index({ sentAt: -1 }, { sparse: true });
 EmailLogSchema.index({ createdAt: -1 });
+EmailLogSchema.index({ mailboxId: 1 }, { sparse: true });
 
 const EmailLog: Model<IEmailLog> = mongoose.models.EmailLog || mongoose.model<IEmailLog>('EmailLog', EmailLogSchema);
 export default EmailLog;

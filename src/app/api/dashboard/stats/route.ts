@@ -2,16 +2,34 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
+
+// 30-second in-memory cache — keeps the 30-query Promise.all from firing on every request.
+// In dev with React StrictMode (double-invoke), the first request populates this cache;
+// the second useEffect fire is served instantly with 0 DB queries.
+let _statsCache: Record<string, unknown> | null = null;
+let _statsCacheExpiry = 0;
+const STATS_CACHE_TTL = 30_000;
 import Lead from '@/lib/models/Lead';
 import EmailLog from '@/lib/models/EmailLog';
 import Reply from '@/lib/models/Reply';
 import ClaudeUsageLog from '@/lib/models/ClaudeUsageLog';
 import NoReplyLead from '@/lib/models/NoReplyLead';
-import { getSmartleadModeAsync } from '@/lib/services/smartlead';
+import InboxAccount from '@/lib/models/InboxAccount';
 import Product from '@/lib/models/Product';
 import Campaign from '@/lib/models/Campaign';
+import { DAILY_LIMIT } from '@/lib/services/mailboxRotation';
 
-// Takes a factory fn so synchronous throws during query creation are also caught.
+function isToday(date: Date | undefined | null): boolean {
+  if (!date) return false;
+  const d = new Date(date);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth()    === now.getMonth() &&
+    d.getDate()     === now.getDate()
+  );
+}
+
 async function safeStat<T>(name: string, fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await fn();
@@ -26,7 +44,10 @@ async function safeStat<T>(name: string, fn: () => Promise<T>, fallback: T): Pro
 }
 
 export async function GET() {
-  // Must complete before any model query — bufferCommands is false
+  if (_statsCache && Date.now() < _statsCacheExpiry) {
+    return NextResponse.json(_statsCache);
+  }
+
   try {
     await connectDB();
   } catch (err) {
@@ -43,8 +64,6 @@ export async function GET() {
     todayStart.setHours(0, 0, 0, 0);
 
     const now = new Date();
-
-    const { isDryRun, isConfigured } = await getSmartleadModeAsync();
 
     const [
       totalLeads,
@@ -76,6 +95,7 @@ export async function GET() {
       notInterestedReplies,
       productCount,
       campaignCount,
+      gmailAccounts,
     ] = await Promise.all([
       safeStat('totalLeads', () => Lead.countDocuments(), 0),
       safeStat('qualifiedLeads', () => Lead.countDocuments({ status: 'qualified' }), 0),
@@ -120,11 +140,28 @@ export async function GET() {
       safeStat('notInterestedReplies', () => Reply.countDocuments({ classification: { $in: ['not_interested', 'do_not_contact'] } }), 0),
       safeStat('productCount', () => Product.countDocuments(), 0),
       safeStat('campaignCount', () => Campaign.countDocuments(), 0),
+      safeStat(
+        'gmailAccounts',
+        () => InboxAccount.find({ provider: 'gmail', isActive: true })
+          .select('email accountType dailySendCount dailySendDate')
+          .lean(),
+        [] as Array<{ email: string; accountType?: string; dailySendCount?: number; dailySendDate?: Date }>
+      ),
     ]);
 
     const estimatedCostToday = claudeCostToday[0]?.total ?? 0;
 
-    return NextResponse.json({
+    const gmailConnectedAccounts = gmailAccounts.length;
+    const gmailTotalCapacity = gmailAccounts.reduce(
+      (sum, a) => sum + DAILY_LIMIT[a.accountType as 'workspace' | 'personal' ?? 'personal'],
+      0
+    );
+    const gmailDailyUsage = gmailAccounts.reduce(
+      (sum, a) => sum + (isToday(a.dailySendDate) ? (a.dailySendCount ?? 0) : 0),
+      0
+    );
+
+    const payload: Record<string, unknown> = {
       totalLeads,
       qualifiedLeads,
       warmLeads,
@@ -139,8 +176,11 @@ export async function GET() {
       replies,
       claudeCallsToday,
       estimatedCostToday: parseFloat(estimatedCostToday.toFixed(4)),
-      smartleadDryRun: isDryRun,
-      smartleadConfigured: isConfigured,
+      gmailConfigured:         gmailConnectedAccounts > 0,
+      gmailEmail:              gmailAccounts[0]?.email ?? null,
+      gmailConnectedAccounts,
+      gmailTotalCapacity,
+      gmailDailyUsage,
       apolloLeadsToday,
       apolloLeadsTotal,
       apifyLeadsToday,
@@ -157,7 +197,10 @@ export async function GET() {
       productCount,
       campaignCount,
       lastUpdated: new Date().toISOString(),
-    });
+    };
+    _statsCache = payload;
+    _statsCacheExpiry = Date.now() + STATS_CACHE_TTL;
+    return NextResponse.json(payload);
   } catch (err) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anyErr = err as any;

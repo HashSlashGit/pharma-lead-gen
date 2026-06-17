@@ -6,6 +6,8 @@ import IntegrationSettings from '@/lib/models/IntegrationSettings';
 import { encrypt, maskSecret, decrypt, isEncryptionConfigured } from '@/lib/utils/encryption';
 import type { EncryptedField } from '@/lib/utils/encryption';
 import { invalidateSettingsCache } from '@/lib/services/settingsCache';
+import { invalidateHealthCache } from '@/app/api/health/route';
+import { invalidateConfigCache } from '@/app/api/config/route';
 import { writeAuditLog } from '@/lib/utils/auditLog';
 import { getRequestActor } from '@/lib/utils/requestActor';
 import type { IIntegrationSettings } from '@/lib/models/IntegrationSettings';
@@ -34,13 +36,6 @@ export async function GET() {
     return NextResponse.json({
       encryptionAvailable: isEncryptionConfigured(),
       claude: maskedOrConfigured(doc?.claudeApiKey, process.env.CLAUDE_API_KEY),
-      smartlead: {
-        ...maskedOrConfigured(doc?.smartleadApiKey, process.env.SMARTLEAD_API_KEY),
-        campaignId: doc?.smartleadCampaignId || process.env.SMARTLEAD_CAMPAIGN_ID || null,
-        fromEmail:  doc?.smartleadFromEmail  || process.env.SMARTLEAD_FROM_EMAIL  || null,
-        fromName:   doc?.smartleadFromName   || process.env.SMARTLEAD_FROM_NAME   || null,
-        dryRun:     doc?.smartleadDryRun     ?? (process.env.SMARTLEAD_DRY_RUN !== 'false'),
-      },
       apollo: {
         ...maskedOrConfigured(doc?.apolloApiKey, process.env.APOLLO_API_KEY),
         maxResults: doc?.apolloMaxResults ?? (parseInt(process.env.APOLLO_MAX_RESULTS_LIMIT ?? '25', 10) || 25),
@@ -94,39 +89,30 @@ export async function POST(req: NextRequest) {
 
     const update: Partial<IIntegrationSettings> = {};
 
-    // Helper — only encrypt and update if a non-empty string is provided
     const maybeEncrypt = (val: unknown): EncryptedField | undefined => {
       if (typeof val === 'string' && val.trim()) return encrypt(val.trim());
       return undefined;
     };
 
-    const encryptedClaude    = maybeEncrypt(body.claudeApiKey);
-    const encryptedSmartlead = maybeEncrypt(body.smartleadApiKey);
-    const encryptedApollo    = maybeEncrypt(body.apolloApiKey);
-    const encryptedApify     = maybeEncrypt(body.apifyToken);
-    const encryptedMailbox   = maybeEncrypt(body.mailboxPassword);
-    const encryptedGoogleClientId     = maybeEncrypt(body.googleClientId);
-    const encryptedGoogleClientSecret = maybeEncrypt(body.googleClientSecret);
+    const encryptedClaude              = maybeEncrypt(body.claudeApiKey);
+    const encryptedApollo              = maybeEncrypt(body.apolloApiKey);
+    const encryptedApify               = maybeEncrypt(body.apifyToken);
+    const encryptedMailbox             = maybeEncrypt(body.mailboxPassword);
+    const encryptedGoogleClientId      = maybeEncrypt(body.googleClientId);
+    const encryptedGoogleClientSecret  = maybeEncrypt(body.googleClientSecret);
 
-    if (encryptedClaude)    update.claudeApiKey    = encryptedClaude;
-    if (encryptedSmartlead) update.smartleadApiKey  = encryptedSmartlead;
-    if (encryptedApollo)    update.apolloApiKey     = encryptedApollo;
-    if (encryptedApify)     update.apifyToken       = encryptedApify;
-    if (encryptedMailbox)   update.mailboxPassword  = encryptedMailbox;
+    if (encryptedClaude)             update.claudeApiKey     = encryptedClaude;
+    if (encryptedApollo)             update.apolloApiKey     = encryptedApollo;
+    if (encryptedApify)              update.apifyToken       = encryptedApify;
+    if (encryptedMailbox)            update.mailboxPassword  = encryptedMailbox;
     if (encryptedGoogleClientId)     update.googleClientId     = encryptedGoogleClientId;
     if (encryptedGoogleClientSecret) update.googleClientSecret = encryptedGoogleClientSecret;
     if (typeof body.googleRedirectUri === 'string') update.googleRedirectUri = (body.googleRedirectUri as string).trim();
 
-    // Non-sensitive fields — store as-is
-    if (typeof body.smartleadCampaignId === 'string') update.smartleadCampaignId = body.smartleadCampaignId.trim();
-    if (typeof body.smartleadFromEmail  === 'string') update.smartleadFromEmail  = body.smartleadFromEmail.trim();
-    if (typeof body.smartleadFromName   === 'string') update.smartleadFromName   = body.smartleadFromName.trim();
-    if (typeof body.smartleadDryRun     === 'boolean') update.smartleadDryRun   = body.smartleadDryRun;
-
     if (typeof body.apolloMaxResults === 'number') update.apolloMaxResults = Math.max(1, Math.min(200, body.apolloMaxResults));
 
-    if (typeof body.apifyActorId         === 'string') update.apifyActorId         = body.apifyActorId.trim();
-    if (typeof body.apifyMaxResults      === 'number') update.apifyMaxResults      = Math.max(1, Math.min(200, body.apifyMaxResults));
+    if (typeof body.apifyActorId          === 'string')  update.apifyActorId          = body.apifyActorId.trim();
+    if (typeof body.apifyMaxResults       === 'number')  update.apifyMaxResults       = Math.max(1, Math.min(200, body.apifyMaxResults));
     if (typeof body.apifyWebsiteEnrichment === 'boolean') update.apifyWebsiteEnrichment = body.apifyWebsiteEnrichment;
 
     if (typeof body.mailboxEnabled      === 'boolean') update.mailboxEnabled    = body.mailboxEnabled;
@@ -148,8 +134,9 @@ export async function POST(req: NextRequest) {
       { upsert: true, new: true }
     );
 
-    // Bust the in-process settings cache so next request gets fresh values
     invalidateSettingsCache();
+    invalidateHealthCache();
+    invalidateConfigCache();
 
     const actor = await getRequestActor(req);
     void writeAuditLog({

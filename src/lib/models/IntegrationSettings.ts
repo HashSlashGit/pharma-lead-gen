@@ -5,14 +5,6 @@ export interface IIntegrationSettings extends Document {
   // Claude AI
   claudeApiKey?: EncryptedField;
 
-  // Smartlead email sending
-  smartleadApiKey?: EncryptedField;
-  smartleadCampaignId?: string;
-  smartleadFromEmail?: string;
-  smartleadFromName?: string;
-  smartleadDryRun?: boolean;
-
-
   // Apollo B2B contacts
   apolloApiKey?: EncryptedField;
   apolloMaxResults?: number;
@@ -35,7 +27,7 @@ export interface IIntegrationSettings extends Document {
   // App
   appUrl?: string;
 
-  // Google OAuth (Gmail sync)
+  // Google OAuth (Gmail send + sync)
   googleClientId?: EncryptedField;
   googleClientSecret?: EncryptedField;
   googleRedirectUri?: string;
@@ -51,29 +43,24 @@ const EncryptedFieldSchema = new Schema<EncryptedField>(
 
 const IntegrationSettingsSchema = new Schema<IIntegrationSettings>(
   {
-    claudeApiKey:         EncryptedFieldSchema,
-    smartleadApiKey:      EncryptedFieldSchema,
-    smartleadCampaignId:  { type: String },
-    smartleadFromEmail:   { type: String },
-    smartleadFromName:    { type: String },
-    smartleadDryRun:          { type: Boolean },
-    apolloApiKey:         EncryptedFieldSchema,
-    apolloMaxResults:     { type: Number },
-    apifyToken:           EncryptedFieldSchema,
-    apifyActorId:         { type: String },
-    apifyMaxResults:      { type: Number },
+    claudeApiKey:           EncryptedFieldSchema,
+    apolloApiKey:           EncryptedFieldSchema,
+    apolloMaxResults:       { type: Number },
+    apifyToken:             EncryptedFieldSchema,
+    apifyActorId:           { type: String },
+    apifyMaxResults:        { type: Number },
     apifyWebsiteEnrichment: { type: Boolean },
-    mailboxEnabled:       { type: Boolean },
-    mailboxImapHost:      { type: String },
-    mailboxImapPort:      { type: Number },
-    mailboxImapSecure:    { type: Boolean },
-    mailboxUser:          { type: String },
-    mailboxPassword:      EncryptedFieldSchema,
-    mailboxLookbackDays:  { type: Number },
-    appUrl:               { type: String },
-    googleClientId:       EncryptedFieldSchema,
-    googleClientSecret:   EncryptedFieldSchema,
-    googleRedirectUri:    { type: String },
+    mailboxEnabled:         { type: Boolean },
+    mailboxImapHost:        { type: String },
+    mailboxImapPort:        { type: Number },
+    mailboxImapSecure:      { type: Boolean },
+    mailboxUser:            { type: String },
+    mailboxPassword:        EncryptedFieldSchema,
+    mailboxLookbackDays:    { type: Number },
+    appUrl:                 { type: String },
+    googleClientId:         EncryptedFieldSchema,
+    googleClientSecret:     EncryptedFieldSchema,
+    googleRedirectUri:      { type: String },
   },
   { timestamps: true }
 );

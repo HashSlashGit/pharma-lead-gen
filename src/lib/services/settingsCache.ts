@@ -11,11 +11,6 @@ import type { IIntegrationSettings } from '@/lib/models/IntegrationSettings';
 
 export interface ResolvedSettings {
   claudeApiKey?: string;
-  smartleadApiKey?: string;
-  smartleadCampaignId?: string;
-  smartleadFromEmail?: string;
-  smartleadFromName?: string;
-  smartleadDryRun: boolean;
   apolloApiKey?: string;
   apolloMaxResults: number;
   apifyToken?: string;
@@ -53,32 +48,26 @@ async function loadFromDB(): Promise<Partial<ResolvedSettings>> {
     const doc = await IntegrationSettings.findOne({}).lean<IIntegrationSettings>();
     if (!doc) return {};
     return {
-      claudeApiKey:          safeDecrypt(doc.claudeApiKey),
-      smartleadApiKey:       safeDecrypt(doc.smartleadApiKey),
-      smartleadCampaignId:   doc.smartleadCampaignId,
-      smartleadFromEmail:    doc.smartleadFromEmail,
-      smartleadFromName:     doc.smartleadFromName,
-      smartleadDryRun:       doc.smartleadDryRun,
-      apolloApiKey:          safeDecrypt(doc.apolloApiKey),
-      apolloMaxResults:      doc.apolloMaxResults,
-      apifyToken:            safeDecrypt(doc.apifyToken),
-      apifyActorId:          doc.apifyActorId,
-      apifyMaxResults:       doc.apifyMaxResults,
+      claudeApiKey:           safeDecrypt(doc.claudeApiKey),
+      apolloApiKey:           safeDecrypt(doc.apolloApiKey),
+      apolloMaxResults:       doc.apolloMaxResults,
+      apifyToken:             safeDecrypt(doc.apifyToken),
+      apifyActorId:           doc.apifyActorId,
+      apifyMaxResults:        doc.apifyMaxResults,
       apifyWebsiteEnrichment: doc.apifyWebsiteEnrichment,
-      mailboxEnabled:        doc.mailboxEnabled,
-      mailboxImapHost:       doc.mailboxImapHost,
-      mailboxImapPort:       doc.mailboxImapPort,
-      mailboxImapSecure:     doc.mailboxImapSecure,
-      mailboxUser:           doc.mailboxUser,
-      mailboxPassword:       safeDecrypt(doc.mailboxPassword),
-      mailboxLookbackDays:   doc.mailboxLookbackDays,
-      appUrl:                doc.appUrl,
-      googleClientId:        safeDecrypt(doc.googleClientId),
-      googleClientSecret:    safeDecrypt(doc.googleClientSecret),
-      googleRedirectUri:     doc.googleRedirectUri,
+      mailboxEnabled:         doc.mailboxEnabled,
+      mailboxImapHost:        doc.mailboxImapHost,
+      mailboxImapPort:        doc.mailboxImapPort,
+      mailboxImapSecure:      doc.mailboxImapSecure,
+      mailboxUser:            doc.mailboxUser,
+      mailboxPassword:        safeDecrypt(doc.mailboxPassword),
+      mailboxLookbackDays:    doc.mailboxLookbackDays,
+      appUrl:                 doc.appUrl,
+      googleClientId:         safeDecrypt(doc.googleClientId),
+      googleClientSecret:     safeDecrypt(doc.googleClientSecret),
+      googleRedirectUri:      doc.googleRedirectUri,
     };
   } catch {
-    // DB unavailable — fall through to env-only mode
     return {};
   }
 }
@@ -91,11 +80,6 @@ export async function getSettings(): Promise<ResolvedSettings> {
 
   const merged: ResolvedSettings = {
     claudeApiKey:    db.claudeApiKey    || process.env.CLAUDE_API_KEY,
-    smartleadApiKey: db.smartleadApiKey || process.env.SMARTLEAD_API_KEY,
-    smartleadCampaignId: db.smartleadCampaignId || process.env.SMARTLEAD_CAMPAIGN_ID,
-    smartleadFromEmail:  db.smartleadFromEmail  || process.env.SMARTLEAD_FROM_EMAIL,
-    smartleadFromName:   db.smartleadFromName   || process.env.SMARTLEAD_FROM_NAME,
-    smartleadDryRun: db.smartleadDryRun ?? (process.env.SMARTLEAD_DRY_RUN !== 'false'),
     apolloApiKey:    db.apolloApiKey    || process.env.APOLLO_API_KEY,
     apolloMaxResults: db.apolloMaxResults ?? (parseInt(process.env.APOLLO_MAX_RESULTS_LIMIT ?? '25', 10) || 25),
     apifyToken:      db.apifyToken      || process.env.APIFY_API_TOKEN || process.env.APIFY_TOKEN,

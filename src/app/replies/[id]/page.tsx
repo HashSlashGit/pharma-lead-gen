@@ -379,7 +379,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                   </button>
                 </div>
                 <p className="text-xs text-slate-400">
-                  Rejecting lets you generate a new draft. Approving dispatches via Smartlead.
+                  Rejecting lets you generate a new draft. Approving dispatches via Gmail.
                 </p>
               </div>
             )}

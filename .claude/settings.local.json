@@ -73,7 +73,9 @@
       "Bash(rm -f \"C:/Users/Zuhayr/pharma-lead-gen/src/app/dev-tools/page.tsx\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/production-checklist/page.tsx\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/testing-checklist/page.tsx\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/api/production-check/route.ts\")",
       "Bash(rm -rf \"C:/Users/Zuhayr/pharma-lead-gen/src/app/dev-tools\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/production-checklist\" \"C:/Users/Zuhayr/pharma-lead-gen/src/app/testing-checklist\")",
       "Bash(git stash *)",
-      "Bash(awk '{print $NF}')"
+      "Bash(awk '{print $NF}')",
+      "mcp__ide__getDiagnostics",
+      "Bash(del *)"
     ]
   }
 }

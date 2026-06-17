@@ -24,13 +24,12 @@ import {
 
 const empty = { name: '', targetCountry: '', targetCategory: '', status: 'draft' as const };
 
-interface SmartleadConfig {
-  configured: boolean;
-  dryRun: boolean;
-  campaignIdPresent: boolean;
-  campaignId: string | null;
-  fromEmailConfigured: boolean;
-  mode: 'no_key' | 'dry_run' | 'live';
+interface GmailConfig {
+  oauthConfigured: boolean;
+  connected: boolean;
+  email: string | null;
+  sendButtonLabel: string;
+  mode: 'no_key' | 'not_connected' | 'live';
 }
 
 type ActivityTab = 'leads' | 'emails' | 'replies' | 'no-reply';
@@ -56,7 +55,7 @@ export default function CampaignsPage() {
   const [form, setForm] = useState(empty);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok?: boolean; error?: string } | null>(null);
-  const [slConfig, setSlConfig] = useState<SmartleadConfig | null>(null);
+  const [slConfig, setSlConfig] = useState<GmailConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
 
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
@@ -77,7 +76,7 @@ export default function CampaignsPage() {
     fetchCampaigns();
     fetch('/api/config')
       .then((r) => r.json())
-      .then((data) => setSlConfig((data.smartlead as SmartleadConfig) ?? null))
+      .then((data) => setSlConfig((data.gmail as GmailConfig) ?? null))
       .catch((err) => console.error('[campaigns] config fetch failed:', err))
       .finally(() => setConfigLoading(false));
   }, []);
@@ -152,45 +151,33 @@ export default function CampaignsPage() {
         </button>
       </div>
 
-      {/* Smartlead status */}
+      {/* Gmail status */}
       {configLoading ? (
         <div className="h-14 bg-white border border-slate-100 rounded-2xl animate-pulse mb-5 shadow-sm" />
-      ) : !slConfig || !slConfig.configured ? (
-        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-5 flex items-center gap-2 text-sm text-rose-800">
+      ) : !slConfig || !slConfig.connected ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5 flex items-center gap-2 text-sm text-amber-800">
           <WifiOff size={15} className="shrink-0" />
-          <span>Smartlead API key not configured. Add <code className="font-mono bg-rose-100 px-1 rounded text-xs">SMARTLEAD_API_KEY</code> to environment settings.</span>
+          <span>
+            {!slConfig?.oauthConfigured
+              ? 'Gmail OAuth not configured. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI to environment settings.'
+              : 'No Gmail account connected. Go to Settings → Gmail Inbox Sync → Connect Gmail.'}
+          </span>
         </div>
       ) : (
         <div className="bg-white border border-slate-100 rounded-2xl p-4 mb-5 shadow-sm">
           <div className="flex items-center gap-3 flex-wrap">
-            <div className={`flex items-center gap-2 text-sm font-medium ${slConfig.dryRun ? 'text-amber-700' : 'text-emerald-700'}`}>
-              {slConfig.dryRun
-                ? <><AlertTriangle size={14} /> Dry Run Mode</>
-                : <><Wifi size={14} /> Live Mode</>}
+            <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+              <Wifi size={14} /> Gmail Connected
             </div>
-            <div className="flex gap-2 flex-wrap text-xs">
-              {slConfig.dryRun ? (
-                <span className="bg-amber-50 text-amber-700 ring-1 ring-amber-200 px-2.5 py-1 rounded-full font-medium">
-                  Emails will not be sent
-                </span>
-              ) : (
-                <span className="bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2.5 py-1 rounded-full font-medium">
-                  Emails can be sent via Smartlead
-                </span>
-              )}
-              {slConfig.fromEmailConfigured && (
-                <span className="bg-slate-50 text-slate-500 ring-1 ring-slate-200 px-2.5 py-1 rounded-full flex items-center gap-1">
-                  <Mail size={10} /> From email configured
-                </span>
-              )}
-            </div>
+            {slConfig.email && (
+              <span className="bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                <Mail size={10} /> {slConfig.email}
+              </span>
+            )}
+            <span className="bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2.5 py-1 rounded-full text-xs font-medium">
+              Emails can be sent via Gmail
+            </span>
           </div>
-          {slConfig.campaignId && (
-            <p className="text-xs text-slate-400 mt-2">
-              Default Campaign ID:{' '}
-              <code className="bg-slate-100 border border-slate-200 px-1 py-0.5 rounded font-mono">{slConfig.campaignId}</code>
-            </p>
-          )}
         </div>
       )}
 

@@ -12,6 +12,10 @@ export interface IInboxAccount extends Document {
   lastSyncedAt?: Date;
   lastHistoryId?: string;
   isActive: boolean;
+  accountType: 'workspace' | 'personal';
+  dailySendCount: number;
+  dailySendDate?: Date;
+  lastRotationSelectedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +30,10 @@ const InboxAccountSchema = new Schema<IInboxAccount>(
     lastSyncedAt:  { type: Date },
     lastHistoryId: { type: String, trim: true },
     isActive:      { type: Boolean, default: true },
+    accountType:   { type: String, enum: ['workspace', 'personal'], default: 'personal' },
+    dailySendCount:            { type: Number, default: 0 },
+    dailySendDate:             { type: Date },
+    lastRotationSelectedAt:    { type: Date },
   },
   { timestamps: true }
 );
@@ -33,6 +41,7 @@ const InboxAccountSchema = new Schema<IInboxAccount>(
 InboxAccountSchema.index({ provider: 1 });
 InboxAccountSchema.index({ email: 1 }, { unique: true });
 InboxAccountSchema.index({ isActive: 1 });
+InboxAccountSchema.index({ lastRotationSelectedAt: 1 });
 
 const InboxAccount: Model<IInboxAccount> =
   mongoose.models.InboxAccount ||
