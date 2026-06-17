@@ -117,15 +117,24 @@ export async function getGmailOAuthUrl(requestOrigin?: string): Promise<string> 
   const clientId = s.googleClientId;
   const { redirectUri, source } = resolveRedirectUri(s, requestOrigin);
 
-  console.log('[GMAIL CONFIG]', JSON.stringify({
-    clientId: clientId ? `${clientId.slice(0, 20)}...` : 'missing',
-    redirectUri: redirectUri ?? 'missing',
+  // TEMP DIAGNOSTIC — remove after confirming which source wins
+  console.log('[GMAIL REDIRECT DIAG]', JSON.stringify({
+    'process.env.GOOGLE_REDIRECT_URI': process.env.GOOGLE_REDIRECT_URI ?? '(not set)',
+    'settings.googleRedirectUri': s.googleRedirectUri ?? '(not set)',
+    'resolved redirectUri': redirectUri ?? '(not set)',
     source,
   }));
+  // END TEMP DIAGNOSTIC
 
   if (!clientId || !redirectUri) {
     throw new Error('Google OAuth credentials not configured. Add Client ID and Redirect URI in Settings → Integrations.');
   }
+
+  console.log('[OAUTH URL BUILD]', JSON.stringify({
+    envRedirectUri: process.env.GOOGLE_REDIRECT_URI,
+    dbRedirectUri: s.googleRedirectUri,
+    finalRedirectUri: redirectUri,
+  }));
 
   const params = new URLSearchParams({
     client_id: clientId,
