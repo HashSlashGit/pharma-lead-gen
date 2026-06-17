@@ -101,6 +101,11 @@ export async function getGmailOAuthUrl(): Promise<string> {
   const clientId = s.googleClientId;
   const redirectUri = s.googleRedirectUri;
 
+  console.log({
+    googleClientId: s.googleClientId,
+    googleRedirectUri: s.googleRedirectUri,
+  });
+
   if (!clientId || !redirectUri) {
     throw new Error('Google OAuth credentials not configured. Add Client ID and Redirect URI in Settings → Integrations.');
   }
