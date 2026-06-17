@@ -107,6 +107,40 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     isAdmin = true;
   }
 
+  // ── TEMP DEBUG: /api/gmail/callback only — remove after diagnosis ──────────
+  if (pathname === '/api/gmail/callback') {
+    const cookieName    = SESSION_COOKIE;
+    const cookieExists  = req.cookies.get(SESSION_COOKIE) != null;
+    const cookiePreview = cookie ? cookie.slice(0, 20) : '(empty)';
+
+    let branch: string;
+    let failReason: string | null = null;
+    if (cookie.startsWith('v2|')) {
+      branch = 'v2 JWT';
+      if (!authed) failReason = 'verifySessionToken returned null — expired, bad HMAC, or malformed token';
+    } else if (appPassword && cookie) {
+      branch = 'legacy HMAC';
+      if (!authed) failReason = 'cookie value does not match HMAC(APP_PASSWORD, JWT_SECRET)';
+    } else if (!appPassword && process.env.NODE_ENV !== 'production') {
+      branch = 'dev bypass';
+    } else {
+      branch = '(none matched)';
+      if (!cookie)         failReason = 'cookie is absent — no session cookie sent with OAuth redirect';
+      else if (appPassword) failReason = 'cookie is non-empty but does not start with "v2|" — unrecognised token format';
+      else                  failReason = 'APP_PASSWORD not set and NODE_ENV is production — dev bypass blocked';
+    }
+
+    console.log('[DEBUG gmail/callback]', JSON.stringify({
+      cookieName,
+      cookieExists,
+      cookiePreview,
+      branch,
+      authed,
+      failReason: authed ? null : (failReason ?? 'unknown'),
+    }));
+  }
+  // ── END TEMP DEBUG ─────────────────────────────────────────────────────────
+
   if (!authed) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json(
