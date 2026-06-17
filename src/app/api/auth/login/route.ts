@@ -5,13 +5,20 @@ import { connectDB } from '@/lib/db/mongoose';
 import User from '@/lib/models/User';
 
 function cookieOpts(maxAge: number) {
-  return {
+  const opts = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax' as const,
     maxAge,
     path: '/',
   };
+  // TEMP DEBUG — remove after cookie diagnosis
+  console.log('[DEBUG auth/login] cookie options:', JSON.stringify({
+    name: SESSION_COOKIE,
+    ...opts,
+    NODE_ENV: process.env.NODE_ENV,
+  }));
+  return opts;
 }
 
 async function ensureFirstAdmin(): Promise<void> {

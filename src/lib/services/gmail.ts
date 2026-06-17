@@ -135,6 +135,13 @@ export async function exchangeCodeForTokens(code: string): Promise<{
     throw new Error('Google OAuth credentials not configured. Add them in Settings → Integrations.');
   }
 
+  // TEMP DEBUG — remove after token-exchange diagnosis
+  console.log('[DEBUG exchangeCodeForTokens]', JSON.stringify({
+    clientIdPrefix: clientId.slice(0, 20),
+    redirectUri,
+    clientSecretSet: Boolean(clientSecret),
+  }));
+
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -148,6 +155,15 @@ export async function exchangeCodeForTokens(code: string): Promise<{
   });
 
   const tokens: TokenResponse = await tokenRes.json();
+
+  // TEMP DEBUG — remove after token-exchange diagnosis
+  if (!tokenRes.ok || tokens.error) {
+    console.log('[DEBUG exchangeCodeForTokens] token fetch failed', JSON.stringify({
+      httpStatus: tokenRes.status,
+      error: tokens.error,
+      error_description: tokens.error_description,
+    }));
+  }
 
   if (!tokenRes.ok || tokens.error) {
     throw new Error(`Token exchange failed: ${tokens.error_description ?? tokenRes.status}`);

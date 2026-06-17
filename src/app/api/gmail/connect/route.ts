@@ -22,6 +22,12 @@ export async function GET() {
 
   try {
     const url = await getGmailOAuthUrl();
+    // TEMP DEBUG — remove after OAuth URL diagnosis
+    console.log('[DEBUG gmail/connect]', JSON.stringify({
+      clientIdPrefix: clientId.slice(0, 20),
+      redirectUri,
+      oauthUrl: url,
+    }));
     return NextResponse.redirect(url);
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
