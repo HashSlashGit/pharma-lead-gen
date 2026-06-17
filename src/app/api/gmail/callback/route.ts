@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { accessToken, refreshToken, tokenExpiry, email } = await exchangeCodeForTokens(code);
+    const { accessToken, refreshToken, tokenExpiry, email } = await exchangeCodeForTokens(code, request.nextUrl.origin);
 
     await connectDB();
 

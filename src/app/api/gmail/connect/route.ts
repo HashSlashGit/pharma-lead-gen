@@ -1,33 +1,23 @@
 export const dynamic = 'force-dynamic';
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getGmailOAuthUrl } from '@/lib/services/gmail';
 import { getSettings } from '@/lib/services/settingsCache';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const s = await getSettings();
   const clientId     = s.googleClientId;
   const clientSecret = s.googleClientSecret;
-  const redirectUri  = s.googleRedirectUri;
 
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     return NextResponse.json(
-      {
-        error:
-          'Gmail OAuth not configured. Add Google Client ID, Client Secret, and Redirect URI in Settings → Integrations.',
-      },
+      { error: 'Gmail OAuth not configured. Add Google Client ID and Client Secret in Settings → Integrations.' },
       { status: 500 }
     );
   }
 
   try {
-    const url = await getGmailOAuthUrl();
-    // TEMP DEBUG — remove after OAuth URL diagnosis
-    console.log('[DEBUG gmail/connect]', JSON.stringify({
-      clientIdPrefix: clientId.slice(0, 20),
-      redirectUri,
-      oauthUrl: url,
-    }));
+    const url = await getGmailOAuthUrl(request.nextUrl.origin);
     return NextResponse.redirect(url);
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

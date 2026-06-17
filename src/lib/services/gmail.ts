@@ -96,10 +96,32 @@ function parseSender(fromHeader: string): { email: string; name: string } {
 
 // ── Public functions ──────────────────────────────────────────────────────────
 
-export async function getGmailOAuthUrl(): Promise<string> {
+function resolveRedirectUri(
+  s: { googleRedirectUri?: string },
+  requestOrigin?: string,
+): { redirectUri: string; source: 'env' | 'db' | 'request' } | { redirectUri: undefined; source: 'none' } {
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    return { redirectUri: process.env.GOOGLE_REDIRECT_URI, source: 'env' };
+  }
+  if (s.googleRedirectUri) {
+    return { redirectUri: s.googleRedirectUri, source: 'db' };
+  }
+  if (requestOrigin) {
+    return { redirectUri: `${requestOrigin}/api/gmail/callback`, source: 'request' };
+  }
+  return { redirectUri: undefined, source: 'none' };
+}
+
+export async function getGmailOAuthUrl(requestOrigin?: string): Promise<string> {
   const s = await getSettings();
   const clientId = s.googleClientId;
-  const redirectUri = s.googleRedirectUri;
+  const { redirectUri, source } = resolveRedirectUri(s, requestOrigin);
+
+  console.log('[GMAIL CONFIG]', JSON.stringify({
+    clientId: clientId ? `${clientId.slice(0, 20)}...` : 'missing',
+    redirectUri: redirectUri ?? 'missing',
+    source,
+  }));
 
   if (!clientId || !redirectUri) {
     throw new Error('Google OAuth credentials not configured. Add Client ID and Redirect URI in Settings → Integrations.');
@@ -120,7 +142,7 @@ export async function getGmailOAuthUrl(): Promise<string> {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export async function exchangeCodeForTokens(code: string): Promise<{
+export async function exchangeCodeForTokens(code: string, requestOrigin?: string): Promise<{
   accessToken: string;
   refreshToken: string;
   tokenExpiry: Date;
@@ -129,18 +151,11 @@ export async function exchangeCodeForTokens(code: string): Promise<{
   const s = await getSettings();
   const clientId = s.googleClientId;
   const clientSecret = s.googleClientSecret;
-  const redirectUri = s.googleRedirectUri;
+  const { redirectUri } = resolveRedirectUri(s, requestOrigin);
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error('Google OAuth credentials not configured. Add them in Settings → Integrations.');
   }
-
-  // TEMP DEBUG — remove after token-exchange diagnosis
-  console.log('[DEBUG exchangeCodeForTokens]', JSON.stringify({
-    clientIdPrefix: clientId.slice(0, 20),
-    redirectUri,
-    clientSecretSet: Boolean(clientSecret),
-  }));
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -155,15 +170,6 @@ export async function exchangeCodeForTokens(code: string): Promise<{
   });
 
   const tokens: TokenResponse = await tokenRes.json();
-
-  // TEMP DEBUG — remove after token-exchange diagnosis
-  if (!tokenRes.ok || tokens.error) {
-    console.log('[DEBUG exchangeCodeForTokens] token fetch failed', JSON.stringify({
-      httpStatus: tokenRes.status,
-      error: tokens.error,
-      error_description: tokens.error_description,
-    }));
-  }
 
   if (!tokenRes.ok || tokens.error) {
     throw new Error(`Token exchange failed: ${tokens.error_description ?? tokenRes.status}`);
