@@ -75,7 +75,10 @@
       "Bash(git stash *)",
       "Bash(awk '{print $NF}')",
       "mcp__ide__getDiagnostics",
-      "Bash(del *)"
+      "Bash(del *)",
+      "Bash(where mongosh *)",
+      "Bash(where mongo *)",
+      "Bash(git push *)"
     ]
   }
 }

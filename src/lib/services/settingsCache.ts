@@ -94,9 +94,9 @@ export async function getSettings(): Promise<ResolvedSettings> {
     mailboxPassword: db.mailboxPassword || process.env.MAILBOX_APP_PASSWORD,
     mailboxLookbackDays: db.mailboxLookbackDays ?? (parseInt(process.env.MAILBOX_LOOKBACK_DAYS ?? '14', 10) || 14),
     appUrl: db.appUrl || process.env.APP_PUBLIC_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL,
-    googleClientId:     db.googleClientId     || process.env.GOOGLE_CLIENT_ID,
-    googleClientSecret: db.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET,
-    googleRedirectUri:  db.googleRedirectUri  || process.env.GOOGLE_REDIRECT_URI,
+    googleClientId:     process.env.GOOGLE_CLIENT_ID     || db.googleClientId,
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || db.googleClientSecret,
+    googleRedirectUri:  process.env.GOOGLE_REDIRECT_URI  || db.googleRedirectUri,
   };
 
   _cache = merged;
