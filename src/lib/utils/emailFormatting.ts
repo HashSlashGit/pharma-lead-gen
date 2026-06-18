@@ -30,5 +30,6 @@ export function formatEmailBodyAsHtml(plainText: string): string {
       return `<p style="margin:0 0 16px 0;">${inner}</p>`;
     });
 
-  return `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#333;">${htmlParagraphs.join('')}</div>`;
+  const body = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#333;">${htmlParagraphs.join('')}</div>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${body}</body></html>`;
 }

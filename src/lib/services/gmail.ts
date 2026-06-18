@@ -4,6 +4,7 @@
  * No tokens are ever logged or returned to the browser.
  */
 
+import { randomBytes } from 'crypto';
 import { getSettings } from '@/lib/services/settingsCache';
 
 export interface GmailReply {
@@ -117,24 +118,9 @@ export async function getGmailOAuthUrl(requestOrigin?: string): Promise<string> 
   const clientId = s.googleClientId;
   const { redirectUri, source } = resolveRedirectUri(s, requestOrigin);
 
-  // TEMP DIAGNOSTIC — remove after confirming which source wins
-  console.log('[GMAIL REDIRECT DIAG]', JSON.stringify({
-    'process.env.GOOGLE_REDIRECT_URI': process.env.GOOGLE_REDIRECT_URI ?? '(not set)',
-    'settings.googleRedirectUri': s.googleRedirectUri ?? '(not set)',
-    'resolved redirectUri': redirectUri ?? '(not set)',
-    source,
-  }));
-  // END TEMP DIAGNOSTIC
-
   if (!clientId || !redirectUri) {
     throw new Error('Google OAuth credentials not configured. Add Client ID and Redirect URI in Settings → Integrations.');
   }
-
-  console.log('[OAUTH URL BUILD]', JSON.stringify({
-    envRedirectUri: process.env.GOOGLE_REDIRECT_URI,
-    dbRedirectUri: s.googleRedirectUri,
-    finalRedirectUri: redirectUri,
-  }));
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -330,10 +316,75 @@ export interface GmailSendResult {
   threadId: string;
 }
 
+// ── MIME / RFC helpers ────────────────────────────────────────────────────────
+
+/** RFC 2047 Base64 encoding for non-ASCII header values. */
+function encodeHeaderValue(value: string): string {
+  if (/^[\x20-\x7E]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, 'utf-8').toString('base64')}?=`;
+}
+
+/** Strip CRLF to prevent header injection. */
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim();
+}
+
+/** RFC 2822 Message-ID using the sender domain. */
+function generateMessageId(fromEmail?: string): string {
+  const domain = fromEmail?.split('@')[1] ?? 'mail.local';
+  return `<${Date.now()}.${randomBytes(8).toString('hex')}@${domain}>`;
+}
+
+/**
+ * Base64-encode a MIME part body.
+ * Lines are wrapped at 76 chars per RFC 2045 §6.8.
+ */
+function encodeMimePart(content: string): string {
+  const b64 = Buffer.from(content, 'utf-8').toString('base64');
+  return (b64.match(/.{1,76}/g) ?? []).join('\r\n');
+}
+
+/** Strip HTML tags and decode entities to produce a plain-text fallback. */
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Build a multipart/alternative body with text/plain and text/html parts.
+ * Parts are ordered plain → html so clients prefer the HTML version.
+ */
+function buildMultipartAlternative(htmlBody: string, plainBody: string, boundary: string): string {
+  const plainPart =
+    `--${boundary}\r\n` +
+    `Content-Type: text/plain; charset=utf-8\r\n` +
+    `Content-Transfer-Encoding: base64\r\n` +
+    `\r\n` +
+    encodeMimePart(plainBody);
+
+  const htmlPart =
+    `--${boundary}\r\n` +
+    `Content-Type: text/html; charset=utf-8\r\n` +
+    `Content-Transfer-Encoding: base64\r\n` +
+    `\r\n` +
+    encodeMimePart(htmlBody);
+
+  return `${plainPart}\r\n${htmlPart}\r\n--${boundary}--`;
+}
+
 /**
  * Send a single email via the Gmail REST API.
- * Constructs a minimal RFC 2822 message, base64url-encodes it, and POSTs
- * to /gmail/v1/users/me/messages/send using the supplied access token.
+ * Constructs a RFC 2822 multipart/alternative message, base64url-encodes it,
+ * and POSTs to /gmail/v1/users/me/messages/send using the supplied access token.
  *
  * Requires the token to carry the gmail.send scope.
  */
@@ -343,19 +394,34 @@ export async function sendGmailMessage(params: {
   subject: string;
   body: string;
   from?: string;
+  fromName?: string;
 }): Promise<GmailSendResult> {
-  const { accessToken, to, subject, body, from } = params;
+  const { accessToken, to, subject, body, from, fromName } = params;
+
+  const safeFrom    = from    ? sanitizeHeaderValue(from)    : undefined;
+  const safeTo      = sanitizeHeaderValue(to);
+  const safeSubject = sanitizeHeaderValue(subject);
+  const boundary    = `----=_Part_${randomBytes(12).toString('hex')}`;
+  const plainBody   = htmlToPlainText(body);
 
   const headerLines: string[] = [];
-  if (from) headerLines.push(`From: ${from}`);
+
+  if (safeFrom) {
+    const safeName   = fromName ? sanitizeHeaderValue(fromName).replace(/"/g, '') : '';
+    const fromHeader = safeName ? `"${safeName}" <${safeFrom}>` : safeFrom;
+    headerLines.push(`From: ${fromHeader}`);
+  }
+
   headerLines.push(
-    `To: ${to}`,
-    `Subject: ${subject}`,
+    `Message-ID: ${generateMessageId(safeFrom)}`,
+    `Date: ${new Date().toUTCString()}`,
+    `To: ${safeTo}`,
+    `Subject: ${encodeHeaderValue(safeSubject)}`,
     'MIME-Version: 1.0',
-    'Content-Type: text/html; charset=utf-8',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
   );
 
-  const raw = `${headerLines.join('\r\n')}\r\n\r\n${body}`;
+  const raw = `${headerLines.join('\r\n')}\r\n\r\n${buildMultipartAlternative(body, plainBody, boundary)}`;
   const encoded = Buffer.from(raw, 'utf-8').toString('base64url');
 
   const res = await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/send', {

@@ -46,10 +46,11 @@ export async function sendCustomEmailViaGmail(
   try {
     const sent = await sendGmailMessage({
       accessToken,
-      to:      leadEmail,
-      subject: emailSubject,
-      body:    emailBody,
-      from:    account.email,
+      to:       leadEmail,
+      subject:  emailSubject,
+      body:     emailBody,
+      from:     account.email,
+      fromName: account.email.split('@')[0],
     });
 
     await recordSend(account._id);

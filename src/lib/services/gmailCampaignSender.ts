@@ -1,5 +1,4 @@
 import { sendCustomEmailViaGmail, type EmailSendResult } from '@/lib/services/gmailSender';
-import { formatEmailBodyAsHtml } from '@/lib/utils/emailFormatting';
 
 export interface CampaignSendParams {
   leadEmail: string;
@@ -17,12 +16,13 @@ export interface CampaignSendParams {
 /**
  * Send a campaign email via Gmail.
  * Passes campaignId so the rotation layer can honour campaign-level inbox assignment.
+ * emailBody must already be HTML-formatted before calling this function.
  */
 export async function sendEmailViaGmail(params: CampaignSendParams): Promise<EmailSendResult> {
   return sendCustomEmailViaGmail({
     leadEmail:          params.leadEmail,
     emailSubject:       params.emailSubject,
-    emailBody:          formatEmailBodyAsHtml(params.emailBody),
+    emailBody:          params.emailBody,
     campaignId:         params.campaignId,
     preferredMailboxId: params.preferredMailboxId,
   });

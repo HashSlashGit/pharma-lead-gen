@@ -51,6 +51,8 @@ We would love to discuss how we can support your supply needs. Would you be avai
 
 Best regards,`;
 
+const UNRESOLVED_PLACEHOLDER = /\[(?:company name|product name|MOQ|pricing|certifications|shipping details)\]/i;
+
 // ── Variable renderer (client-side, no API calls) ──────────────────────
 function renderVariables(
   template: string,
@@ -278,6 +280,11 @@ export default function ComposePage() {
     try {
       const renderedSubject = renderVariables(subject, selectedLead, selectedProduct);
       const renderedBody = renderVariables(body, selectedLead, selectedProduct);
+
+      if (UNRESOLVED_PLACEHOLDER.test(renderedSubject) || UNRESOLVED_PLACEHOLDER.test(renderedBody)) {
+        setResult({ type: 'error', message: 'Select a product before saving — some template variables are unresolved.' });
+        return null;
+      }
 
       const res = await fetch('/api/email-logs/manual-draft', {
         method: 'POST',

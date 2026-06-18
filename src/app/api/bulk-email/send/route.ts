@@ -39,6 +39,8 @@ interface LeadShape {
   category: string;
 }
 
+const UNRESOLVED_VAR = /\{\{[^}]+\}\}/;
+
 function renderVars(
   template: string,
   lead: LeadShape,
@@ -153,6 +155,12 @@ export async function POST(req: NextRequest) {
 
       const renderedSubject = renderVars(subject, lead, product);
       const renderedBody    = renderVars(emailBody, lead, product);
+
+      if (UNRESOLVED_VAR.test(renderedSubject) || UNRESOLVED_VAR.test(renderedBody)) {
+        results.push({ leadId, email: lead.email, status: 'skipped', error: 'Unresolved template variables — select a product' });
+        skipped++;
+        continue;
+      }
 
       const emailLog = await EmailLog.create({
         leadId:    lead._id,
