@@ -63,7 +63,7 @@ const FIELD_ALIASES: Record<string, string> = {
 // Aliases that are plausible but could be ambiguous — shown with a warning badge in the UI
 const LOW_CONFIDENCE_KEYS = new Set(['type', 'segment']);
 
-const REQUIRED_FIELDS = ['companyName', 'email'] as const;
+const REQUIRED_FIELDS = ['email'] as const;
 type RequiredField = (typeof REQUIRED_FIELDS)[number];
 
 // ---------- types ----------
@@ -296,18 +296,15 @@ export default function ImportPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-semibold text-blue-800 mb-1">
-                Required columns{' '}
+                Required column{' '}
                 <span className="font-normal text-blue-600">(any of these names are recognised)</span>
-              </p>
-              <p className="text-blue-700 font-mono text-xs mb-0.5">
-                companyName · company · business · organization
               </p>
               <p className="text-blue-700 font-mono text-xs">
                 email · emailAddress · contactEmail
               </p>
               <p className="font-semibold text-blue-800 mt-2 mb-1">Optional columns</p>
               <p className="text-blue-700 font-mono text-xs">
-                country · category · city · phone · website · source · notes (and their common aliases)
+                companyName · company · country · category · city · phone · website · source · notes
               </p>
             </div>
             <button
@@ -476,12 +473,6 @@ export default function ImportPage() {
                     Missing Required Fields
                   </p>
                   <div className="space-y-1.5">
-                    {mappingAnalysis.missingRequired.includes('companyName') && (
-                      <div className="flex items-center gap-1.5 text-xs text-rose-700">
-                        <XCircle size={13} className="shrink-0" />
-                        Could not identify a Company Name column.
-                      </div>
-                    )}
                     {mappingAnalysis.missingRequired.includes('email') && (
                       <div className="flex items-center gap-1.5 text-xs text-rose-700">
                         <XCircle size={13} className="shrink-0" />

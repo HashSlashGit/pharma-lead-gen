@@ -169,17 +169,14 @@ export async function POST(req: NextRequest) {
       const raw = normalizeRow(rows[i]);
       const rowNum = i + 2;
 
-      if (!raw.companyName) {
-        results.errors.push(`Row ${rowNum}: Missing company name — cell was empty`);
-        results.skipReasons['Missing companyName'] = (results.skipReasons['Missing companyName'] ?? 0) + 1;
-        results.skipped++;
-        continue;
-      }
       if (!raw.email) {
-        results.errors.push(`Row ${rowNum}: Missing email (${raw.companyName})`);
+        results.errors.push(`Row ${rowNum}: Missing email — row skipped`);
         results.skipReasons['Missing email'] = (results.skipReasons['Missing email'] ?? 0) + 1;
         results.skipped++;
         continue;
+      }
+      if (!raw.companyName) {
+        raw.companyName = 'Unknown Company';
       }
       if (!raw.country) {
         raw.country = 'Unknown';
