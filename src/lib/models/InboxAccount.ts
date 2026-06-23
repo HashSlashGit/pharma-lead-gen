@@ -6,6 +6,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IInboxAccount extends Document {
   provider: 'gmail';
   email: string;
+  displayName?: string;
   accessToken: string;
   refreshToken: string;
   tokenExpiry?: Date;
@@ -24,6 +25,7 @@ const InboxAccountSchema = new Schema<IInboxAccount>(
   {
     provider:      { type: String, enum: ['gmail'], required: true, default: 'gmail' },
     email:         { type: String, required: true, trim: true, lowercase: true },
+    displayName:   { type: String, trim: true },
     accessToken:   { type: String, required: true },
     refreshToken:  { type: String, required: true },
     tokenExpiry:   { type: Date },

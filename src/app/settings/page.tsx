@@ -163,8 +163,12 @@ export default function SettingsPage() {
     connected: boolean;
     email?: string;
     lastSyncedAt?: string;
+    displayName?: string | null;
   } | null>(null);
   const [gmailSyncing, setGmailSyncing]     = useState(false);
+  const [displayNameInput, setDisplayNameInput]   = useState('');
+  const [savingDisplayName, setSavingDisplayName] = useState(false);
+  const [displayNameSaved, setDisplayNameSaved]   = useState(false);
   const [gmailSyncResult, setGmailSyncResult] = useState<{
     success: boolean;
     message: string;
@@ -182,10 +186,27 @@ export default function SettingsPage() {
       const res = await fetch('/api/gmail/status');
       const data = await res.json();
       setGmailStatus(data);
+      setDisplayNameInput(data.displayName ?? '');
     } catch {
       setGmailStatus({ configured: false, connected: false });
     }
   }, []);
+
+  const handleSaveDisplayName = async () => {
+    setSavingDisplayName(true);
+    setDisplayNameSaved(false);
+    try {
+      await fetch('/api/gmail/account', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: displayNameInput }),
+      });
+      setDisplayNameSaved(true);
+      fetchGmailStatus();
+    } finally {
+      setSavingDisplayName(false);
+    }
+  };
 
   useEffect(() => {
     fetchGmailStatus();
@@ -515,6 +536,27 @@ export default function SettingsPage() {
                     <span className="text-slate-500 text-xs">
                       {new Date(gmailStatus.lastSyncedAt).toLocaleString()}
                     </span>
+                  </div>
+                )}
+                {gmailStatus?.connected && (
+                  <div className="flex items-center justify-between text-sm pt-1">
+                    <span className="text-slate-500">Sender display name</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={displayNameInput}
+                        onChange={(e) => { setDisplayNameInput(e.target.value); setDisplayNameSaved(false); }}
+                        placeholder="e.g. United Pharmacy Online"
+                        className="text-xs border border-slate-200 rounded px-2 py-1 w-48 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                      <button
+                        onClick={handleSaveDisplayName}
+                        disabled={savingDisplayName}
+                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded transition-colors"
+                      >
+                        {savingDisplayName ? 'Saving…' : displayNameSaved ? 'Saved' : 'Save'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

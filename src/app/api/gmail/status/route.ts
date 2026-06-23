@@ -17,7 +17,7 @@ export async function GET() {
     await connectDB();
 
     const account = await InboxAccount.findOne({ provider: 'gmail', isActive: true })
-      .select('email lastSyncedAt')
+      .select('email lastSyncedAt displayName')
       .lean();
 
     if (!account) {
@@ -29,6 +29,7 @@ export async function GET() {
       connected: true,
       email: account.email,
       lastSyncedAt: account.lastSyncedAt ?? null,
+      displayName: (account as { displayName?: string }).displayName ?? null,
     });
   } catch (err) {
     console.error('[gmail/status]', err);

@@ -3,21 +3,167 @@
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
-import { Upload, FileText, CheckCircle, AlertTriangle, ArrowLeft, Download } from 'lucide-react';
+import {
+  Upload, FileText, CheckCircle, AlertTriangle, ArrowLeft, Download, XCircle,
+} from 'lucide-react';
+
+// ---------- alias map (must stay in sync with backend FIELD_ALIASES) ----------
+
+function normalizeKey(s: string): string {
+  return s.toLowerCase().replace(/[\s_]+/g, '');
+}
+
+const FIELD_ALIASES: Record<string, string> = {
+  // companyName
+  company: 'companyName',
+  companyname: 'companyName',
+  business: 'companyName',
+  businessname: 'companyName',
+  organization: 'companyName',
+  organizationname: 'companyName',
+  // country  (countryregion = Microsoft Excel export; countrycode = ISO 3166-1 alpha-2)
+  country: 'country',
+  countryname: 'country',
+  countrycode: 'country',
+  countryregion: 'country',
+  nation: 'country',
+  // category  (type & segment are low-confidence — see LOW_CONFIDENCE_KEYS)
+  category: 'category',
+  industry: 'category',
+  businesscategory: 'category',
+  segment: 'category',
+  type: 'category',
+  // email
+  email: 'email',
+  emailaddress: 'email',
+  emailid: 'email',
+  contactemail: 'email',
+  // phone
+  phone: 'phone',
+  phonenumber: 'phone',
+  phoneno: 'phone',
+  phonenos: 'phone',
+  mobile: 'phone',
+  mobilenumber: 'phone',
+  contactnumber: 'phone',
+  // website
+  website: 'website',
+  websiteurl: 'website',
+  url: 'website',
+  companywebsite: 'website',
+  // city
+  city: 'city',
+  town: 'city',
+  location: 'city',
+  // passthrough
+  source: 'source',
+  notes: 'notes',
+};
+
+// Aliases that are plausible but could be ambiguous — shown with a warning badge in the UI
+const LOW_CONFIDENCE_KEYS = new Set(['type', 'segment']);
+
+const REQUIRED_FIELDS = ['companyName', 'country', 'category'] as const;
+type RequiredField = (typeof REQUIRED_FIELDS)[number];
+
+// ---------- types ----------
+
+interface MappedColumn {
+  header: string;
+  field: string;
+  lowConfidence: boolean;
+}
+
+interface Collision {
+  field: string;
+  used: string;
+  duplicate: string;
+}
+
+interface MappingAnalysis {
+  totalHeaders: number;
+  mapped: MappedColumn[];
+  ignored: string[];
+  collisions: Collision[];
+  missingRequired: RequiredField[];
+}
 
 interface ImportResult {
   imported: number;
   duplicates?: number;
   skipped: number;
+  skipReasons?: Record<string, number>;
   errors: string[];
   total: number;
 }
+
+// ---------- CSV helpers ----------
+
+function parseLine(line: string): string[] {
+  const cols: string[] = [];
+  let current = '';
+  let inQ = false;
+  for (const ch of line) {
+    if (ch === '"') { inQ = !inQ; continue; }
+    if (ch === ',' && !inQ) { cols.push(current); current = ''; continue; }
+    current += ch;
+  }
+  cols.push(current);
+  return cols;
+}
+
+function parsePreview(text: string): string[][] {
+  return text
+    .split(/\r?\n/)
+    .filter((l) => l.trim())
+    .slice(0, 6)
+    .map(parseLine);
+}
+
+function analyzeHeaders(rawHeaders: string[]): MappingAnalysis {
+  const mapped: MappedColumn[] = [];
+  const ignored: string[] = [];
+  const collisions: Collision[] = [];
+  // Map from canonical field → the first CSV header that claimed it
+  const seen = new Map<string, string>();
+
+  for (const h of rawHeaders) {
+    const trimmed = h.trim();
+    if (!trimmed) continue;
+    const key = normalizeKey(trimmed);
+    const field = FIELD_ALIASES[key];
+
+    if (field) {
+      if (!seen.has(field)) {
+        mapped.push({ header: trimmed, field, lowConfidence: LOW_CONFIDENCE_KEYS.has(key) });
+        seen.set(field, trimmed);
+      } else {
+        collisions.push({ field, used: seen.get(field)!, duplicate: trimmed });
+        ignored.push(trimmed);
+      }
+    } else {
+      ignored.push(trimmed);
+    }
+  }
+
+  return {
+    totalHeaders: rawHeaders.filter((h) => h.trim()).length,
+    mapped,
+    ignored,
+    collisions,
+    missingRequired: REQUIRED_FIELDS.filter((f) => !seen.has(f)),
+  };
+}
+
+// ---------- sample ----------
 
 const SAMPLE_CSV = `companyName,country,category,email,city,phone,website,source,notes
 Al Dawaa Pharmacy,Saudi Arabia,Pharmacy,contact@aldawaa.com,Riyadh,+966-11-123456,https://aldawaa.com,Manual,Large chain pharmacy
 MedPharm Distributors,UAE,Distributor,info@medpharm.ae,Dubai,+971-4-9876543,https://medpharm.ae,LinkedIn,Wholesale distributor
 City Clinic Group,Kuwait,Clinic,admin@cityclinic.kw,Kuwait City,+965-22334455,,Manual,Multi-branch clinic
 HealthPlus Wholesale,Egypt,Wholesaler,sales@healthplus.eg,Cairo,+20-2-12345678,https://healthplus.eg,Apollo,Pharma wholesaler`;
+
+// ---------- component ----------
 
 export default function ImportPage() {
   const router = useRouter();
@@ -26,25 +172,11 @@ export default function ImportPage() {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string[][]>([]);
+  const [dataRowCount, setDataRowCount] = useState(0);
+  const [mappingAnalysis, setMappingAnalysis] = useState<MappingAnalysis | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState('');
-
-  const parsePreview = (text: string) => {
-    const lines = text.split(/\r?\n/).filter((l) => l.trim()).slice(0, 6);
-    return lines.map((line) => {
-      const cols: string[] = [];
-      let current = '';
-      let inQ = false;
-      for (const ch of line) {
-        if (ch === '"') { inQ = !inQ; continue; }
-        if (ch === ',' && !inQ) { cols.push(current); current = ''; continue; }
-        current += ch;
-      }
-      cols.push(current);
-      return cols;
-    });
-  };
 
   const handleFile = (f: File) => {
     if (!f.name.endsWith('.csv')) {
@@ -54,10 +186,19 @@ export default function ImportPage() {
     setFile(f);
     setError('');
     setResult(null);
+    setMappingAnalysis(null);
+    setDataRowCount(0);
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
-      setPreview(parsePreview(text));
+      const parsed = parsePreview(text);
+      setPreview(parsed);
+      if (parsed.length > 0) {
+        setMappingAnalysis(analyzeHeaders(parsed[0]));
+        const total = text.split(/\r?\n/).filter((l) => l.trim()).length;
+        setDataRowCount(Math.max(0, total - 1));
+      }
     };
     reader.readAsText(f);
   };
@@ -70,33 +211,30 @@ export default function ImportPage() {
   };
 
   const handleImport = async () => {
-    if (!file) return;
+    if (!file || !mappingAnalysis) return;
     setImporting(true);
     setError('');
     setResult(null);
 
     try {
       const text = await file.text();
-
-      // Parse CSV client-side into rows
       const lines = text.split(/\r?\n/).filter((l) => l.trim());
       if (lines.length < 2) throw new Error('CSV has no data rows');
 
-      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
+      const rawHeaders = parseLine(lines[0]);
+      const seen = new Set<string>();
+      const headerFields: (string | null)[] = rawHeaders.map((h) => {
+        const field = FIELD_ALIASES[normalizeKey(h.trim())];
+        if (field && !seen.has(field)) { seen.add(field); return field; }
+        return null;
+      });
 
       const rows = lines.slice(1).map((line) => {
-        const values: string[] = [];
-        let current = '';
-        let inQ = false;
-        for (const ch of line) {
-          if (ch === '"') { inQ = !inQ; continue; }
-          if (ch === ',' && !inQ) { values.push(current); current = ''; continue; }
-          current += ch;
-        }
-        values.push(current);
-
+        const values = parseLine(line);
         const obj: Record<string, string> = {};
-        headers.forEach((h, i) => { obj[h] = (values[i] ?? '').trim(); });
+        headerFields.forEach((field, i) => {
+          if (field) obj[field] = (values[i] ?? '').trim();
+        });
         return obj;
       });
 
@@ -105,8 +243,8 @@ export default function ImportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows }),
       });
-      const data = await res.json();
 
+      const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Import failed');
       setResult(data);
     } catch (err) {
@@ -126,12 +264,18 @@ export default function ImportPage() {
     URL.revokeObjectURL(url);
   };
 
-  const headers = preview[0] ?? [];
-  const rows = preview.slice(1);
+  const previewHeaders = preview[0] ?? [];
+  const previewRows = preview.slice(1);
+  const canImport = mappingAnalysis !== null && mappingAnalysis.missingRequired.length === 0;
+  const successRate = result && result.total > 0
+    ? Math.round((result.imported / result.total) * 100)
+    : null;
 
   return (
     <AppShell>
       <div className="max-w-3xl">
+
+        {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <button
             onClick={() => router.push('/leads')}
@@ -142,19 +286,32 @@ export default function ImportPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Import Leads from CSV</h1>
             <p className="text-slate-500 text-sm mt-1">
-              Bulk import — rule-based scoring runs automatically. No AI credits used.
+              Upload any spreadsheet — column names are detected automatically, extras are ignored.
             </p>
           </div>
         </div>
 
-        {/* CSV Format Guide */}
+        {/* Info box */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-sm">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-semibold text-blue-800 mb-1">Required CSV columns:</p>
-              <p className="text-blue-700 font-mono text-xs">companyName, country, category</p>
-              <p className="font-semibold text-blue-800 mt-2 mb-1">Optional columns:</p>
-              <p className="text-blue-700 font-mono text-xs">email, city, phone, website, source, notes</p>
+              <p className="font-semibold text-blue-800 mb-1">
+                Required columns{' '}
+                <span className="font-normal text-blue-600">(any of these names are recognised)</span>
+              </p>
+              <p className="text-blue-700 font-mono text-xs mb-0.5">
+                companyName · company · business · organization
+              </p>
+              <p className="text-blue-700 font-mono text-xs mb-0.5">
+                country · countryName · countryCode · nation
+              </p>
+              <p className="text-blue-700 font-mono text-xs">
+                category · industry · segment · type
+              </p>
+              <p className="font-semibold text-blue-800 mt-2 mb-1">Optional columns</p>
+              <p className="text-blue-700 font-mono text-xs">
+                email · phone · website · city · source · notes (and their common aliases)
+              </p>
             </div>
             <button
               onClick={downloadSample}
@@ -191,35 +348,37 @@ export default function ImportPage() {
               <FileText size={32} className="mx-auto text-emerald-500 mb-2" />
               <p className="font-medium text-emerald-700">{file.name}</p>
               <p className="text-xs text-slate-400 mt-1">
-                {preview.length > 1 ? `${preview.length - 1} data rows detected` : 'Reading file…'}
+                {dataRowCount > 0 ? `${dataRowCount} data rows detected` : 'Reading file…'}
               </p>
             </div>
           ) : (
             <div>
               <Upload size={32} className="mx-auto text-slate-300 mb-2" />
               <p className="font-medium text-slate-600">Drop your CSV file here</p>
-              <p className="text-xs text-slate-400 mt-1">or click to browse</p>
+              <p className="text-xs text-slate-400 mt-1">
+                or click to browse — extra columns are ignored automatically
+              </p>
             </div>
           )}
         </div>
 
         {/* Preview Table */}
-        {preview.length > 1 && (
+        {previewRows.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
             <div className="px-4 py-3 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-widest">
-              Preview (first {rows.length} rows)
+              Preview (first {previewRows.length} rows)
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50">
-                    {headers.map((h, i) => (
+                    {previewHeaders.map((h, i) => (
                       <th key={i} className="px-3 py-2 text-left font-medium text-slate-600">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((row, ri) => (
+                  {previewRows.map((row, ri) => (
                     <tr key={ri}>
                       {row.map((cell, ci) => (
                         <td key={ci} className="px-3 py-2 text-slate-600 max-w-[140px] truncate">{cell}</td>
@@ -232,18 +391,146 @@ export default function ImportPage() {
           </div>
         )}
 
+        {/* Column Mapping Analysis */}
+        {mappingAnalysis && (
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden mb-5">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                Column Analysis
+              </span>
+              <span className="text-xs text-slate-400">
+                {mappingAnalysis.totalHeaders} detected &middot; {mappingAnalysis.mapped.length} mapped &middot; {mappingAnalysis.ignored.length} ignored
+              </span>
+            </div>
+            <div className="p-4 space-y-4">
+
+              {/* Mapped columns */}
+              {mappingAnalysis.mapped.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Mapped Columns
+                  </p>
+                  <div className="space-y-1.5">
+                    {mappingAnalysis.mapped.map(({ header, field, lowConfidence }, i) => (
+                      <div key={`mapped-${i}`} className="flex items-center gap-2 text-xs flex-wrap">
+                        <CheckCircle size={13} className="text-emerald-500 shrink-0" />
+                        <span className="text-slate-600 font-mono">{header}</span>
+                        <span className="text-slate-300">→</span>
+                        <span className="text-emerald-700 font-mono font-medium">{field}</span>
+                        {lowConfidence && (
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">
+                            Low confidence
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Collision warnings */}
+              {mappingAnalysis.collisions.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">
+                    Column Conflicts
+                  </p>
+                  <div className="space-y-1.5">
+                    {mappingAnalysis.collisions.map((c, i) => (
+                      <div key={`collision-${i}`} className="flex items-start gap-1.5 text-xs text-amber-700">
+                        <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                        <span>
+                          Multiple columns map to{' '}
+                          <span className="font-mono font-medium">{c.field}</span>
+                          . Using &ldquo;
+                          <span className="font-mono">{c.used}</span>
+                          &rdquo;, ignoring &ldquo;
+                          <span className="font-mono">{c.duplicate}</span>
+                          &rdquo;.
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Ignored columns */}
+              {mappingAnalysis.ignored.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Ignored Columns
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {mappingAnalysis.ignored.map((h, i) => (
+                      <span
+                        key={`ignored-${i}`}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-xs font-mono"
+                      >
+                        <span className="text-slate-400">○</span> {h}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Missing required */}
+              {mappingAnalysis.missingRequired.length > 0 && (
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-rose-700 uppercase tracking-wider mb-2">
+                    Missing Required Fields
+                  </p>
+                  <div className="space-y-1.5">
+                    {mappingAnalysis.missingRequired.includes('companyName') && (
+                      <div className="flex items-center gap-1.5 text-xs text-rose-700">
+                        <XCircle size={13} className="shrink-0" />
+                        Could not identify a Company Name column.
+                      </div>
+                    )}
+                    {mappingAnalysis.missingRequired.includes('country') && (
+                      <div className="flex items-center gap-1.5 text-xs text-rose-700">
+                        <XCircle size={13} className="shrink-0" />
+                        Country column is missing.
+                      </div>
+                    )}
+                    {mappingAnalysis.missingRequired.includes('category') && (
+                      <div className="flex items-center gap-1.5 text-xs text-rose-700">
+                        <XCircle size={13} className="shrink-0" />
+                        Category/Industry column is missing.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
         {error && (
           <div className="flex items-center gap-2 text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm mb-4">
             <AlertTriangle size={16} /> {error}
           </div>
         )}
 
+        {/* Result */}
         {result && (
           <div className="bg-white border border-slate-200 rounded-xl p-5 mb-5">
-            <div className="flex items-center gap-2 mb-4">
-              <CheckCircle size={18} className="text-emerald-500" />
-              <h2 className="font-semibold text-slate-800">Import Complete</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle size={18} className="text-emerald-500" />
+                <h2 className="font-semibold text-slate-800">Import Complete</h2>
+              </div>
+              {successRate !== null && (
+                <span className={`text-sm font-semibold ${
+                  successRate >= 80 ? 'text-emerald-600' :
+                  successRate >= 50 ? 'text-amber-500' :
+                  'text-rose-600'
+                }`}>
+                  {successRate}% success rate
+                </span>
+              )}
             </div>
+
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-emerald-600">{result.imported}</div>
@@ -258,30 +545,94 @@ export default function ImportPage() {
                 <div className="text-xs text-slate-500 mt-1">Total Rows</div>
               </div>
             </div>
-            {result.errors.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 max-h-40 overflow-auto">
-                <p className="font-semibold mb-1">Skipped rows:</p>
-                {result.errors.map((e, i) => <p key={i}>{e}</p>)}
+
+            {/* Analytics */}
+            <div className="border-t border-slate-100 pt-4 mb-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                Import Analytics
+              </p>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Total columns detected</span>
+                  <span className="font-medium">{mappingAnalysis?.totalHeaders ?? '—'}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Rows detected</span>
+                  <span className="font-medium">{result.total}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Columns mapped</span>
+                  <span className="font-medium text-emerald-600">{mappingAnalysis?.mapped.length ?? '—'}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Rows eligible</span>
+                  <span className="font-medium text-emerald-600">
+                    {result.imported + (result.duplicates ?? 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Columns ignored</span>
+                  <span className="font-medium text-slate-400">{mappingAnalysis?.ignored.length ?? '—'}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Rows skipped</span>
+                  <span className="font-medium text-amber-500">{result.skipped}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Skip reasons breakdown */}
+            {result.skipReasons && Object.keys(result.skipReasons).length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p className="text-xs font-semibold text-amber-800 mb-2">Skipped Row Breakdown</p>
+                <div className="space-y-1">
+                  {Object.entries(result.skipReasons).map(([reason, count]) => (
+                    <div key={reason} className="flex justify-between text-xs text-amber-700">
+                      <span>{reason}</span>
+                      <span className="font-medium">{count} row{count !== 1 ? 's' : ''}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* Per-row error details */}
+            {result.errors.length > 0 && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600 max-h-40 overflow-auto mb-4">
+                <p className="font-semibold text-slate-700 mb-1">Skipped row details:</p>
+                {result.errors.map((e, i) => <p key={i} className="font-mono">{e}</p>)}
+              </div>
+            )}
+
             <button
               onClick={() => router.push('/leads')}
-              className="mt-4 w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
+              className="w-full bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
             >
               View All Leads
             </button>
           </div>
         )}
 
+        {/* Import button */}
         {file && !result && (
           <button
             onClick={handleImport}
-            disabled={importing}
-            className="w-full bg-emerald-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60"
+            disabled={importing || !canImport}
+            title={
+              !canImport && mappingAnalysis
+                ? `Missing required columns: ${mappingAnalysis.missingRequired.join(', ')}`
+                : undefined
+            }
+            className="w-full bg-emerald-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {importing ? 'Importing…' : `Import ${preview.length > 1 ? preview.length - 1 : ''} Leads`}
+            {importing
+              ? 'Importing…'
+              : !canImport && mappingAnalysis
+              ? 'Cannot import — fix missing columns first'
+              : `Import ${dataRowCount > 0 ? dataRowCount : ''} Leads`}
           </button>
         )}
+
       </div>
     </AppShell>
   );

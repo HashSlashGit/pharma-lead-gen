@@ -395,8 +395,9 @@ export async function sendGmailMessage(params: {
   body: string;
   from?: string;
   fromName?: string;
+  replyTo?: string;
 }): Promise<GmailSendResult> {
-  const { accessToken, to, subject, body, from, fromName } = params;
+  const { accessToken, to, subject, body, from, fromName, replyTo } = params;
 
   const safeFrom    = from    ? sanitizeHeaderValue(from)    : undefined;
   const safeTo      = sanitizeHeaderValue(to);
@@ -410,6 +411,10 @@ export async function sendGmailMessage(params: {
     const safeName   = fromName ? sanitizeHeaderValue(fromName).replace(/"/g, '') : '';
     const fromHeader = safeName ? `"${safeName}" <${safeFrom}>` : safeFrom;
     headerLines.push(`From: ${fromHeader}`);
+  }
+
+  if (replyTo) {
+    headerLines.push(`Reply-To: ${sanitizeHeaderValue(replyTo)}`);
   }
 
   headerLines.push(

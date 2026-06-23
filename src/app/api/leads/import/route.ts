@@ -3,22 +3,118 @@ import { connectDB } from '@/lib/db/mongoose';
 import Lead from '@/lib/models/Lead';
 import { scoreLead } from '@/lib/utils/scoreLead';
 
-interface CsvRow {
-  companyName?: string;
-  company_name?: string;
-  country?: string;
-  category?: string;
-  email?: string;
-  city?: string;
-  phone?: string;
-  website?: string;
-  source?: string;
-  notes?: string;
+// Normalize header for alias lookup: lowercase, strip all spaces & underscores
+function normalizeKey(s: string): string {
+  return s.toLowerCase().replace(/[\s_]+/g, '');
 }
 
-function normalizeRow(row: CsvRow) {
+// Normalized key → canonical field name
+const FIELD_ALIASES: Record<string, string> = {
+  // companyName
+  company: 'companyName',
+  companyname: 'companyName',
+  business: 'companyName',
+  businessname: 'companyName',
+  organization: 'companyName',
+  organizationname: 'companyName',
+  // country  (countryregion = Microsoft Excel export; countrycode = ISO 3166-1 alpha-2)
+  country: 'country',
+  countryname: 'country',
+  countrycode: 'country',
+  countryregion: 'country',
+  nation: 'country',
+  // category
+  category: 'category',
+  industry: 'category',
+  businesscategory: 'category',
+  segment: 'category',
+  type: 'category',
+  // email
+  email: 'email',
+  emailaddress: 'email',
+  emailid: 'email',
+  contactemail: 'email',
+  // phone
+  phone: 'phone',
+  phonenumber: 'phone',
+  phoneno: 'phone',
+  phonenos: 'phone',
+  mobile: 'phone',
+  mobilenumber: 'phone',
+  contactnumber: 'phone',
+  // website
+  website: 'website',
+  websiteurl: 'website',
+  url: 'website',
+  companywebsite: 'website',
+  // city
+  city: 'city',
+  town: 'city',
+  location: 'city',
+  // passthrough
+  source: 'source',
+  notes: 'notes',
+};
+
+const KNOWN_FIELDS = new Set([
+  'companyName', 'country', 'category', 'email', 'phone', 'website', 'city', 'source', 'notes',
+]);
+
+// Re-key a row using the alias map, dropping unknown fields
+function applyMapping(row: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  const seen = new Set<string>();
+  for (const [k, v] of Object.entries(row)) {
+    const canon = FIELD_ALIASES[normalizeKey(k)];
+    if (canon && KNOWN_FIELDS.has(canon) && !seen.has(canon)) {
+      out[canon] = v;
+      seen.add(canon);
+    }
+  }
+  return out;
+}
+
+function parseLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; continue; }
+    if (ch === ',' && !inQuotes) { values.push(current); current = ''; continue; }
+    current += ch;
+  }
+  values.push(current);
+  return values;
+}
+
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+
+  const rawHeaders = parseLine(lines[0]);
+  const seen = new Set<string>();
+  const headerFields: (string | null)[] = rawHeaders.map((h) => {
+    const canon = FIELD_ALIASES[normalizeKey(h.trim())];
+    if (canon && KNOWN_FIELDS.has(canon) && !seen.has(canon)) {
+      seen.add(canon);
+      return canon;
+    }
+    return null;
+  });
+
+  return lines.slice(1).map((line) => {
+    const values = parseLine(line);
+    const obj: Record<string, string> = {};
+    headerFields.forEach((field, i) => {
+      if (field) obj[field] = (values[i] ?? '').trim();
+    });
+    return obj;
+  });
+}
+
+function normalizeRow(row: Record<string, string>) {
   return {
-    companyName: (row.companyName ?? row.company_name ?? '').trim(),
+    companyName: (row.companyName ?? '').trim(),
     country: (row.country ?? '').trim(),
     category: (row.category ?? '').trim(),
     email: (row.email ?? '').trim().toLowerCase(),
@@ -30,56 +126,33 @@ function normalizeRow(row: CsvRow) {
   };
 }
 
-function parseCSV(text: string): CsvRow[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-
-  const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/[^a-z_]/g, ''));
-
-  return lines.slice(1).map((line) => {
-    // Handle quoted fields with commas inside
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (const ch of line) {
-      if (ch === '"') { inQuotes = !inQuotes; continue; }
-      if (ch === ',' && !inQuotes) { values.push(current); current = ''; continue; }
-      current += ch;
-    }
-    values.push(current);
-
-    const obj: Record<string, string> = {};
-    headers.forEach((h, i) => { obj[h] = (values[i] ?? '').trim(); });
-    return obj as CsvRow;
-  });
-}
-
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
     const contentType = req.headers.get('content-type') ?? '';
-    let rows: CsvRow[] = [];
+    let rows: Record<string, string>[] = [];
 
     if (contentType.includes('application/json')) {
-      // Accept pre-parsed JSON array (from frontend after client-side parse)
       const body = await req.json();
-      rows = Array.isArray(body.rows) ? body.rows : [];
+      const raw: Record<string, string>[] = Array.isArray(body.rows) ? body.rows : [];
+      rows = raw.map(applyMapping);
     } else {
-      // Accept raw CSV text
       const text = await req.text();
       rows = parseCSV(text);
     }
 
     if (rows.length === 0) {
-      return NextResponse.json({ error: 'No valid rows found in import data' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'No valid rows found in import data' },
+        { status: 400 },
+      );
     }
 
-    // Pre-load existing emails to build duplicate set in memory
     const existingEmails = new Set<string>(
       (await Lead.find({}, { email: 1 }).lean())
         .map((l) => l.email?.toLowerCase() ?? '')
-        .filter(Boolean)
+        .filter(Boolean),
     );
 
     const results = {
@@ -87,37 +160,36 @@ export async function POST(req: NextRequest) {
       duplicates: 0,
       skipped: 0,
       errors: [] as string[],
+      skipReasons: {} as Record<string, number>,
     };
 
     const toInsert = [];
 
     for (let i = 0; i < rows.length; i++) {
       const raw = normalizeRow(rows[i]);
-      const rowNum = i + 2; // +2 because row 1 is headers
+      const rowNum = i + 2;
 
-      // Required fields
       if (!raw.companyName) {
-        results.errors.push(`Row ${rowNum}: missing companyName`);
+        results.errors.push(`Row ${rowNum}: Could not identify a Company Name — cell was empty`);
+        results.skipReasons['Missing companyName'] = (results.skipReasons['Missing companyName'] ?? 0) + 1;
         results.skipped++;
         continue;
       }
       if (!raw.category) {
-        results.errors.push(`Row ${rowNum}: missing category (${raw.companyName})`);
+        results.errors.push(`Row ${rowNum}: Category/Industry column missing (${raw.companyName})`);
+        results.skipReasons['Missing category'] = (results.skipReasons['Missing category'] ?? 0) + 1;
         results.skipped++;
         continue;
       }
-      // Country defaults to 'Unknown' rather than skipping
       if (!raw.country) {
         raw.country = 'Unknown';
       }
 
-      // Duplicate check by email — tracked separately from invalid-row skips
       if (raw.email && existingEmails.has(raw.email)) {
         results.duplicates++;
         continue;
       }
 
-      // Rule-based score — no Claude
       const { score, status } = scoreLead(raw);
 
       const doc = {
@@ -135,7 +207,7 @@ export async function POST(req: NextRequest) {
         aiProcessed: false,
       };
 
-      if (raw.email) existingEmails.add(raw.email); // prevent intra-batch duplicates
+      if (raw.email) existingEmails.add(raw.email);
       toInsert.push(doc);
     }
 
@@ -155,11 +227,15 @@ export async function POST(req: NextRequest) {
       imported: results.imported,
       duplicates: results.duplicates,
       skipped: results.skipped,
+      skipReasons: results.skipReasons,
       errors: results.errors,
       total: rows.length,
     });
   } catch (err) {
     console.error('[POST /api/leads/import]', err);
-    return NextResponse.json({ error: 'Import failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Import failed — please try again' },
+      { status: 500 },
+    );
   }
 }
