@@ -170,22 +170,25 @@ export async function POST(req: NextRequest) {
       const rowNum = i + 2;
 
       if (!raw.companyName) {
-        results.errors.push(`Row ${rowNum}: Could not identify a Company Name — cell was empty`);
+        results.errors.push(`Row ${rowNum}: Missing company name — cell was empty`);
         results.skipReasons['Missing companyName'] = (results.skipReasons['Missing companyName'] ?? 0) + 1;
         results.skipped++;
         continue;
       }
-      if (!raw.category) {
-        results.errors.push(`Row ${rowNum}: Category/Industry column missing (${raw.companyName})`);
-        results.skipReasons['Missing category'] = (results.skipReasons['Missing category'] ?? 0) + 1;
+      if (!raw.email) {
+        results.errors.push(`Row ${rowNum}: Missing email (${raw.companyName})`);
+        results.skipReasons['Missing email'] = (results.skipReasons['Missing email'] ?? 0) + 1;
         results.skipped++;
         continue;
       }
       if (!raw.country) {
         raw.country = 'Unknown';
       }
+      if (!raw.category) {
+        raw.category = 'General';
+      }
 
-      if (raw.email && existingEmails.has(raw.email)) {
+      if (existingEmails.has(raw.email)) {
         results.duplicates++;
         continue;
       }

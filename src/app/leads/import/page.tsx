@@ -63,7 +63,7 @@ const FIELD_ALIASES: Record<string, string> = {
 // Aliases that are plausible but could be ambiguous — shown with a warning badge in the UI
 const LOW_CONFIDENCE_KEYS = new Set(['type', 'segment']);
 
-const REQUIRED_FIELDS = ['companyName', 'country', 'category'] as const;
+const REQUIRED_FIELDS = ['companyName', 'email'] as const;
 type RequiredField = (typeof REQUIRED_FIELDS)[number];
 
 // ---------- types ----------
@@ -302,15 +302,12 @@ export default function ImportPage() {
               <p className="text-blue-700 font-mono text-xs mb-0.5">
                 companyName · company · business · organization
               </p>
-              <p className="text-blue-700 font-mono text-xs mb-0.5">
-                country · countryName · countryCode · nation
-              </p>
               <p className="text-blue-700 font-mono text-xs">
-                category · industry · segment · type
+                email · emailAddress · contactEmail
               </p>
               <p className="font-semibold text-blue-800 mt-2 mb-1">Optional columns</p>
               <p className="text-blue-700 font-mono text-xs">
-                email · phone · website · city · source · notes (and their common aliases)
+                country · category · city · phone · website · source · notes (and their common aliases)
               </p>
             </div>
             <button
@@ -485,16 +482,10 @@ export default function ImportPage() {
                         Could not identify a Company Name column.
                       </div>
                     )}
-                    {mappingAnalysis.missingRequired.includes('country') && (
+                    {mappingAnalysis.missingRequired.includes('email') && (
                       <div className="flex items-center gap-1.5 text-xs text-rose-700">
                         <XCircle size={13} className="shrink-0" />
-                        Country column is missing.
-                      </div>
-                    )}
-                    {mappingAnalysis.missingRequired.includes('category') && (
-                      <div className="flex items-center gap-1.5 text-xs text-rose-700">
-                        <XCircle size={13} className="shrink-0" />
-                        Category/Industry column is missing.
+                        Email column is missing.
                       </div>
                     )}
                   </div>
