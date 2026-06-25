@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type MouseEvent } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -45,6 +45,7 @@ export default function LeadsPage() {
   const [toDate, setToDate] = useState('');
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [targetCampaignId, setTargetCampaignId] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -83,11 +84,24 @@ export default function LeadsPage() {
     setSelected(allSelected ? new Set() : new Set(leads.map((l) => l._id)));
   };
 
-  const toggleOne = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
+  const toggleOne = (id: string, index: number, e: MouseEvent) => {
+    if (e.shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      const next = new Set(selected);
+      const adding = !selected.has(id);
+      leads.slice(start, end + 1).forEach((l) => {
+        if (adding) next.add(l._id);
+        else next.delete(l._id);
+      });
+      setSelected(next);
+    } else {
+      const next = new Set(selected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setSelected(next);
+    }
+    setLastSelectedIndex(index);
   };
 
   const handleAddToCampaign = async () => {
@@ -163,7 +177,7 @@ export default function LeadsPage() {
             <input
               type="date"
               value={fromDate}
-              onChange={(e) => { setFromDate(e.target.value); setSelected(new Set()); }}
+              onChange={(e) => { setFromDate(e.target.value); setSelected(new Set()); setLastSelectedIndex(null); }}
               className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
             />
           </div>
@@ -174,7 +188,7 @@ export default function LeadsPage() {
             <input
               type="date"
               value={toDate}
-              onChange={(e) => { setToDate(e.target.value); setSelected(new Set()); }}
+              onChange={(e) => { setToDate(e.target.value); setSelected(new Set()); setLastSelectedIndex(null); }}
               className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
             />
           </div>
@@ -195,7 +209,7 @@ export default function LeadsPage() {
         {STATUSES.map((s) => (
           <button
             key={s.value}
-            onClick={() => { setStatusFilter(s.value); setSelected(new Set()); }}
+            onClick={() => { setStatusFilter(s.value); setSelected(new Set()); setLastSelectedIndex(null); }}
             className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
               statusFilter === s.value
                 ? 'bg-slate-800 text-white shadow-sm'
@@ -233,7 +247,7 @@ export default function LeadsPage() {
               Add to Campaign
             </button>
             <button
-              onClick={() => { setSelected(new Set()); setBulkResult(null); }}
+              onClick={() => { setSelected(new Set()); setBulkResult(null); setLastSelectedIndex(null); }}
               className="text-slate-400 hover:text-white p-1.5 transition-colors"
             >
               <X size={15} />
@@ -313,13 +327,13 @@ export default function LeadsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {leads.map((lead) => (
+                {leads.map((lead, index) => (
                   <tr
                     key={lead._id}
                     className={`hover:bg-slate-50/70 transition-colors ${selected.has(lead._id) ? 'bg-emerald-50/50' : ''}`}
                   >
                     <td className="px-4 py-3.5">
-                      <button onClick={() => toggleOne(lead._id)} className="text-slate-300 hover:text-slate-600 transition-colors">
+                      <button onClick={(e) => toggleOne(lead._id, index, e)} className="text-slate-300 hover:text-slate-600 transition-colors">
                         {selected.has(lead._id) ? (
                           <CheckSquare size={16} className="text-emerald-500" />
                         ) : (

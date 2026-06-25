@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { CampaignRow, EmailTemplateRow, LeadRow, ProductRow } from '@/types';
@@ -101,6 +101,7 @@ export default function BulkEmailPage() {
 
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewLeadId, setPreviewLeadId] = useState('');
 
@@ -176,10 +177,12 @@ export default function BulkEmailPage() {
     if (!selectedCampaignId) {
       setCampaignLeads([]);
       setSelected(new Set());
+      setLastSelectedIndex(null);
       return;
     }
     setCampaignLeadsLoading(true);
     setSelected(new Set());
+    setLastSelectedIndex(null);
     fetch(`/api/campaigns/${selectedCampaignId}/leads`)
       .then((r) => r.json())
       .then((d) => setCampaignLeads((d.leads as LeadRow[]) ?? []))
@@ -217,11 +220,24 @@ export default function BulkEmailPage() {
     }
   };
 
-  const toggleOne = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
+  const toggleOne = (id: string, index: number, e: MouseEvent) => {
+    if (e.shiftKey && lastSelectedIndex !== null) {
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      const next = new Set(selected);
+      const adding = !selected.has(id);
+      filteredLeads.slice(start, end + 1).forEach((l) => {
+        if (adding) next.add(l._id);
+        else next.delete(l._id);
+      });
+      setSelected(next);
+    } else {
+      const next = new Set(selected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setSelected(next);
+    }
+    setLastSelectedIndex(index);
   };
 
   const previewLead = campaignLeads.find((l) => l._id === previewLeadId) ?? filteredLeads[0] ?? null;
@@ -561,7 +577,7 @@ export default function BulkEmailPage() {
                 {LEAD_STATUS_FILTERS.map((f) => (
                   <button
                     key={f.value}
-                    onClick={() => { setStatusFilter(f.value); setSelected(new Set()); }}
+                    onClick={() => { setStatusFilter(f.value); setSelected(new Set()); setLastSelectedIndex(null); }}
                     className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                       statusFilter === f.value
                         ? 'bg-slate-700 text-white'
@@ -618,16 +634,16 @@ export default function BulkEmailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredLeads.map((lead) => (
+                    {filteredLeads.map((lead, index) => (
                       <tr
                         key={lead._id}
                         className={`hover:bg-slate-50 transition-colors cursor-pointer ${
                           selected.has(lead._id) ? 'bg-emerald-50' : ''
                         }`}
-                        onClick={() => toggleOne(lead._id)}
+                        onClick={(e) => toggleOne(lead._id, index, e)}
                       >
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => toggleOne(lead._id)} className="text-slate-400">
+                          <button onClick={(e) => toggleOne(lead._id, index, e)} className="text-slate-400">
                             {selected.has(lead._id) ? (
                               <CheckSquare size={16} className="text-emerald-600" />
                             ) : (
