@@ -23,6 +23,23 @@ import {
   Users,
 } from 'lucide-react';
 
+const PAGE_SIZE = 100;
+
+function getPageRange(current: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const delta = 2;
+  const range: number[] = [];
+  for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
+    range.push(i);
+  }
+  const result: (number | '...')[] = [1];
+  if (range[0] > 2) result.push('...');
+  result.push(...range);
+  if (range[range.length - 1] < total - 1) result.push('...');
+  result.push(total);
+  return result;
+}
+
 const STATUSES = [
   { value: '', label: 'All' },
   { value: 'qualified', label: 'Qualified' },
@@ -43,6 +60,8 @@ export default function LeadsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
@@ -51,9 +70,9 @@ export default function LeadsPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const fetchLeads = useCallback((status?: string, from?: string, to?: string) => {
+  const fetchLeads = useCallback((status?: string, from?: string, to?: string, page = 1) => {
     setLoading(true);
-    const params = new URLSearchParams({ limit: '100' });
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), page: String(page) });
     if (status) params.set('status', status);
     if (from) params.set('fromDate', from);
     if (to) params.set('toDate', to);
@@ -61,15 +80,15 @@ export default function LeadsPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.error) setError(data.error);
-        else { setLeads(data.leads); setTotal(data.total); }
+        else { setLeads(data.leads); setTotal(data.total); setTotalPages(data.totalPages ?? 1); }
       })
       .catch(() => setError('Failed to load leads'))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    fetchLeads(statusFilter || undefined, fromDate || undefined, toDate || undefined);
-  }, [statusFilter, fromDate, toDate, fetchLeads]);
+    fetchLeads(statusFilter || undefined, fromDate || undefined, toDate || undefined, currentPage);
+  }, [statusFilter, fromDate, toDate, currentPage, fetchLeads]);
 
   useEffect(() => {
     fetch('/api/campaigns')
@@ -102,6 +121,13 @@ export default function LeadsPage() {
       setSelected(next);
     }
     setLastSelectedIndex(index);
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelected(new Set());
+    setLastSelectedIndex(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAddToCampaign = async () => {
@@ -177,7 +203,7 @@ export default function LeadsPage() {
             <input
               type="date"
               value={fromDate}
-              onChange={(e) => { setFromDate(e.target.value); setSelected(new Set()); setLastSelectedIndex(null); }}
+              onChange={(e) => { setFromDate(e.target.value); setCurrentPage(1); setSelected(new Set()); setLastSelectedIndex(null); }}
               className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
             />
           </div>
@@ -188,13 +214,13 @@ export default function LeadsPage() {
             <input
               type="date"
               value={toDate}
-              onChange={(e) => { setToDate(e.target.value); setSelected(new Set()); setLastSelectedIndex(null); }}
+              onChange={(e) => { setToDate(e.target.value); setCurrentPage(1); setSelected(new Set()); setLastSelectedIndex(null); }}
               className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700"
             />
           </div>
           {(fromDate || toDate) && (
             <button
-              onClick={() => { setFromDate(''); setToDate(''); }}
+              onClick={() => { setFromDate(''); setToDate(''); setCurrentPage(1); }}
               className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 border border-slate-200 rounded-lg"
             >
               <X size={12} />
@@ -209,7 +235,7 @@ export default function LeadsPage() {
         {STATUSES.map((s) => (
           <button
             key={s.value}
-            onClick={() => { setStatusFilter(s.value); setSelected(new Set()); setLastSelectedIndex(null); }}
+            onClick={() => { setStatusFilter(s.value); setCurrentPage(1); setSelected(new Set()); setLastSelectedIndex(null); }}
             className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
               statusFilter === s.value
                 ? 'bg-slate-800 text-white shadow-sm'
@@ -394,8 +420,55 @@ export default function LeadsPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-3 border-t border-slate-50 text-xs text-slate-400">
-            Showing {leads.length} of {total.toLocaleString()} leads
+          <div className="px-4 py-3.5 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+            <span className="text-xs text-slate-400">
+              {total === 0 ? 'No leads' : (
+                <>
+                  Showing{' '}
+                  <span className="font-medium text-slate-600">
+                    {((currentPage - 1) * PAGE_SIZE + 1).toLocaleString()}–{Math.min(currentPage * PAGE_SIZE, total).toLocaleString()}
+                  </span>
+                  {' '}of{' '}
+                  <span className="font-medium text-slate-600">{total.toLocaleString()}</span>
+                  {' '}leads
+                </>
+              )}
+            </span>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  ← Previous
+                </button>
+                {getPageRange(currentPage, totalPages).map((p, i) =>
+                  p === '...' ? (
+                    <span key={`e-${i}`} className="px-1.5 text-slate-400 text-xs select-none">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => handlePageChange(p as number)}
+                      className={`min-w-[2rem] h-8 px-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        p === currentPage
+                          ? 'bg-slate-800 text-white'
+                          : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
