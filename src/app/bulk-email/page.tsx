@@ -17,6 +17,8 @@ import {
   X,
 } from 'lucide-react';
 
+const BATCH_SIZE = 50;
+
 const LEAD_STATUS_FILTERS = [
   { value: '', label: 'All' },
   { value: 'cold', label: 'Cold' },
@@ -105,6 +107,7 @@ export default function BulkEmailPage() {
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<SendSummary | null>(null);
   const [sendError, setSendError] = useState('');
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
   const subjectInputRef = useRef<HTMLInputElement>(null);
   const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -233,29 +236,55 @@ export default function BulkEmailPage() {
     setSending(true);
     setSendResult(null);
     setSendError('');
+    setBatchProgress(null);
+
+    const allIds = [...selected];
+    const batches: string[][] = [];
+    for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+      batches.push(allIds.slice(i, i + BATCH_SIZE));
+    }
+
+    const accumulated: SendSummary = { sent: 0, failed: 0, skipped: 0, total: 0, results: [] };
+    let batchError = '';
+
     try {
-      const res = await fetch('/api/bulk-email/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          campaignId: selectedCampaignId,
-          subject,
-          body,
-          leadIds: [...selected],
-          productId: selectedProductId || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSendError(data.error ?? `Send failed (HTTP ${res.status})`);
-      } else {
-        setSendResult(data as SendSummary);
-        setSelected(new Set());
+      for (let b = 0; b < batches.length; b++) {
+        if (batches.length > 1) setBatchProgress({ current: b + 1, total: batches.length });
+        const res = await fetch('/api/bulk-email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            campaignId: selectedCampaignId,
+            subject,
+            body,
+            leadIds: batches[b],
+            productId: selectedProductId || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          batchError = data.error ?? `Send failed on batch ${b + 1} of ${batches.length} (HTTP ${res.status})`;
+          break;
+        }
+        const r = data as SendSummary;
+        accumulated.sent    += r.sent;
+        accumulated.failed  += r.failed;
+        accumulated.skipped += r.skipped;
+        accumulated.total   += r.total;
+        accumulated.results.push(...r.results);
       }
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : 'Network error.');
+      batchError = err instanceof Error ? err.message : 'Network error.';
     } finally {
       setSending(false);
+      setBatchProgress(null);
+    }
+
+    if (batchError) {
+      setSendError(batchError);
+    } else {
+      setSendResult(accumulated);
+      setSelected(new Set());
     }
   };
 
@@ -277,7 +306,7 @@ export default function BulkEmailPage() {
           Bulk Email Sender
         </h1>
         <p className="text-slate-500 text-sm mt-1">
-          Select a campaign, choose a template, pick leads and send. Max 50 per send.
+          Select a campaign, choose a template, pick leads and send.
         </p>
       </div>
 
@@ -444,10 +473,14 @@ export default function BulkEmailPage() {
               className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-40"
             >
               {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-              {sending ? 'Sending…' : `Send to ${selected.size} lead${selected.size !== 1 ? 's' : ''}`}
+              {sending
+                ? batchProgress
+                  ? `Sending batch ${batchProgress.current} of ${batchProgress.total}…`
+                  : 'Sending…'
+                : `Send to ${selected.size} lead${selected.size !== 1 ? 's' : ''}`}
             </button>
             <p className="text-xs text-slate-400 mt-2 text-center">
-              Sends exact subject/body via the connected sender. Max 50 per send.
+              Sends exact subject/body via the connected sender. Large selections are sent in batches automatically.
             </p>
           </div>
 
