@@ -39,8 +39,41 @@ export interface LeadRow {
   aiProcessed: boolean;
   followUpCount: number;
   notes?: string;
+  tags: string[];
+  archived: boolean;
+  emailProvider?: string;
+  lastContactedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CleanupStats {
+  total: number;
+  active: number;
+  archived: number;
+  noEmail: number;
+  gmail: number;
+  yahoo: number;
+  outlook: number;
+  hotmail: number;
+  aol: number;
+  custom: number;
+  duplicates: number;
+}
+
+export interface LeadAnalytics {
+  total: number;
+  today: number;
+  thisWeek: number;
+  thisMonth: number;
+  archived: number;
+  active: number;
+  noEmail: number;
+  byStatus: Array<{ status: string; count: number }>;
+  byProvider: Array<{ provider: string; count: number }>;
+  byCountry: Array<{ country: string; count: number }>;
+  byCategory: Array<{ category: string; count: number }>;
+  byDay: Array<{ date: string; count: number }>;
 }
 
 export interface ProductRow {

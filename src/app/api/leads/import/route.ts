@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
 import Lead from '@/lib/models/Lead';
 import { scoreLead } from '@/lib/utils/scoreLead';
+import { getEmailProvider } from '@/lib/utils/emailProvider';
 
 // Normalize header for alias lookup: lowercase, strip all spaces & underscores
 function normalizeKey(s: string): string {
@@ -197,6 +198,7 @@ export async function POST(req: NextRequest) {
         country: raw.country,
         category: raw.category,
         email: raw.email || undefined,
+        emailProvider: raw.email ? getEmailProvider(raw.email) : undefined,
         city: raw.city || undefined,
         phone: raw.phone || undefined,
         website: raw.website || undefined,
@@ -205,6 +207,8 @@ export async function POST(req: NextRequest) {
         score,
         status,
         aiProcessed: false,
+        tags: [],
+        archived: false,
       };
 
       if (raw.email) existingEmails.add(raw.email);

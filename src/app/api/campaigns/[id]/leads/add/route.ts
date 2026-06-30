@@ -44,31 +44,41 @@ export async function POST(
       .lean();
     const existingLeadIdSet = new Set(existingLeads.map((l) => l._id.toString()));
 
-    let added = 0;
-    let skipped = 0;
+    const toInsert = validLeadIds
+      .filter((lid) => existingLeadIdSet.has(lid))
+      .map((lid) => ({
+        campaignId: id,
+        leadId: lid,
+        status: 'active' as const,
+        addedAt: new Date(),
+      }));
 
-    for (const leadId of validLeadIds) {
-      if (!existingLeadIdSet.has(leadId)) {
-        skipped++;
-        continue;
-      }
+    const notFound = validLeadIds.length - toInsert.length;
+    let added = 0;
+    let duplicates = 0;
+
+    if (toInsert.length > 0) {
       try {
-        await CampaignLead.create({
-          campaignId: id,
-          leadId,
-          status: 'active',
-          addedAt: new Date(),
-        });
-        added++;
+        const result = await CampaignLead.insertMany(toInsert, { ordered: false });
+        added = result.length;
       } catch (err: unknown) {
-        if ((err as { code?: number }).code === 11000) {
-          skipped++;
+        // ordered:false commits successful inserts even when some fail.
+        // If every failure is a duplicate-key error, count successes and move on.
+        const e = err as {
+          writeErrors?: Array<{ code?: number }>;
+          result?: { insertedCount?: number };
+        };
+        const writeErrors = e.writeErrors ?? [];
+        if (writeErrors.length > 0 && writeErrors.every((we) => we.code === 11000)) {
+          added = e.result?.insertedCount ?? (toInsert.length - writeErrors.length);
+          duplicates = writeErrors.length;
         } else {
           throw err;
         }
       }
     }
 
+    const skipped = notFound + duplicates;
     return NextResponse.json({ added, skipped, total: validLeadIds.length });
   } catch (err) {
     console.error('[POST /api/campaigns/[id]/leads/add]', err);

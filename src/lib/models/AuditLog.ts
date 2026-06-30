@@ -8,7 +8,14 @@ export type AuditAction =
   | 'settings_changed'
   | 'lead_imported'
   | 'campaign_created'
-  | 'bulk_email_sent';
+  | 'bulk_email_sent'
+  | 'leads_archived'
+  | 'leads_restored'
+  | 'leads_deleted'
+  | 'leads_exported'
+  | 'leads_tags_updated'
+  | 'leads_cleanup_run'
+  | 'leads_duplicates_removed';
 
 export interface IAuditLog extends Document {
   action: AuditAction;

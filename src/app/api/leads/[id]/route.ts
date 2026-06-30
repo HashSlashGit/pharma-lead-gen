@@ -47,12 +47,14 @@ export async function PATCH(
     await connectDB();
     const body = await req.json();
 
-    // Only allow safe status/notes updates — no score or aiProcessed override from frontend
-    const allowed = ['status', 'notes', 'nextFollowUpAt'];
+    // Allow safe field updates — no score or aiProcessed override from frontend
+    const allowed = ['status', 'notes', 'nextFollowUpAt', 'tags', 'archived', 'companyName', 'country', 'city', 'phone', 'website', 'category'];
     const update: Record<string, unknown> = {};
     for (const key of allowed) {
       if (key in body) update[key] = body[key];
     }
+    // Validate tags must be string array
+    if ('tags' in update && !Array.isArray(update.tags)) delete update.tags;
 
     const lead = await Lead.findByIdAndUpdate(id, update, { new: true }).lean();
     if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });

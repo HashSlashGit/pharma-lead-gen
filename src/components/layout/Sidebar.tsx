@@ -21,6 +21,8 @@ import {
   FileText,
   Layers,
   Shield,
+  SlidersHorizontal,
+  BarChart2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -43,6 +45,8 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { href: '/leads', label: 'All Leads', icon: Users, exact: true },
       { href: '/leads/new', label: 'Add Lead', icon: PlusCircle, exact: true },
       { href: '/leads/import', label: 'Import CSV', icon: Upload, exact: true },
+      { href: '/leads/cleanup', label: 'Cleanup Center', icon: SlidersHorizontal, exact: true },
+      { href: '/leads/analytics', label: 'Analytics', icon: BarChart2, exact: true },
       { href: '/leads/reply', label: 'Reply Inbox', icon: Inbox, exact: true },
       { href: '/leads/no-reply', label: 'No Reply', icon: Archive, exact: true },
     ],
