@@ -179,8 +179,12 @@ export default function ImportPage() {
   const [error, setError] = useState('');
 
   const handleFile = (f: File) => {
-    if (!f.name.endsWith('.csv')) {
+    if (!f.name.endsWith('.csv') && !f.name.endsWith('.txt')) {
       setError('Please upload a .csv file');
+      return;
+    }
+    if (f.size > 100 * 1024 * 1024) {
+      setError('File exceeds 100 MB. Please split it into smaller files.');
       return;
     }
     setFile(f);
@@ -217,35 +221,37 @@ export default function ImportPage() {
     setResult(null);
 
     try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-      if (lines.length < 2) throw new Error('CSV has no data rows');
-
-      const rawHeaders = parseLine(lines[0]);
-      const seen = new Set<string>();
-      const headerFields: (string | null)[] = rawHeaders.map((h) => {
-        const field = FIELD_ALIASES[normalizeKey(h.trim())];
-        if (field && !seen.has(field)) { seen.add(field); return field; }
-        return null;
-      });
-
-      const rows = lines.slice(1).map((line) => {
-        const values = parseLine(line);
-        const obj: Record<string, string> = {};
-        headerFields.forEach((field, i) => {
-          if (field) obj[field] = (values[i] ?? '').trim();
-        });
-        return obj;
-      });
+      // Send the raw CSV file as multipart/form-data — avoids the ~4 MB JSON body limit
+      // that was causing "Request Entity Too Large" → "Unexpected token 'R'..." errors.
+      const formData = new FormData();
+      formData.append('file', file);
 
       const res = await fetch('/api/leads/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows }),
+        // No Content-Type header — browser sets multipart/form-data with boundary automatically
+        body: formData,
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Import failed');
+      // Always read as text first, then parse safely — avoids crashes when the
+      // server returns a non-JSON body (413, 500, HTML error page, etc.)
+      const responseText = await res.text();
+      let data: ImportResult & { success?: boolean; error?: string };
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (res.status === 413) {
+          throw new Error('File is too large for upload. Try splitting it into smaller files.');
+        }
+        const preview = responseText.slice(0, 200).replace(/<[^>]+>/g, '').trim();
+        throw new Error(
+          `Unexpected server response (HTTP ${res.status}): ${preview || 'empty response'}`
+        );
+      }
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error ?? `Import failed (${res.status})`);
+      }
+
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');

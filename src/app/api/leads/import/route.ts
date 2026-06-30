@@ -4,12 +4,12 @@ import Lead from '@/lib/models/Lead';
 import { scoreLead } from '@/lib/utils/scoreLead';
 import { getEmailProvider } from '@/lib/utils/emailProvider';
 
-// Normalize header for alias lookup: lowercase, strip all spaces & underscores
+// ─── Column alias map (must stay in sync with frontend) ─────────────────────
+
 function normalizeKey(s: string): string {
   return s.toLowerCase().replace(/[\s_]+/g, '');
 }
 
-// Normalized key → canonical field name
 const FIELD_ALIASES: Record<string, string> = {
   // companyName
   company: 'companyName',
@@ -18,7 +18,7 @@ const FIELD_ALIASES: Record<string, string> = {
   businessname: 'companyName',
   organization: 'companyName',
   organizationname: 'companyName',
-  // country  (countryregion = Microsoft Excel export; countrycode = ISO 3166-1 alpha-2)
+  // country
   country: 'country',
   countryname: 'country',
   countrycode: 'country',
@@ -61,7 +61,6 @@ const KNOWN_FIELDS = new Set([
   'companyName', 'country', 'category', 'email', 'phone', 'website', 'city', 'source', 'notes',
 ]);
 
-// Re-key a row using the alias map, dropping unknown fields
 function applyMapping(row: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   const seen = new Set<string>();
@@ -74,6 +73,8 @@ function applyMapping(row: Record<string, string>): Record<string, string> {
   }
   return out;
 }
+
+// ─── CSV parser ─────────────────────────────────────────────────────────────
 
 function parseLine(line: string): string[] {
   const values: string[] = [];
@@ -88,7 +89,9 @@ function parseLine(line: string): string[] {
   return values;
 }
 
-function parseCSV(text: string): Record<string, string>[] {
+function parseCSV(raw: string): Record<string, string>[] {
+  // Strip UTF-8 BOM — present in most Excel-exported CSVs
+  const text = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
 
@@ -116,16 +119,21 @@ function parseCSV(text: string): Record<string, string>[] {
 function normalizeRow(row: Record<string, string>) {
   return {
     companyName: (row.companyName ?? '').trim(),
-    country: (row.country ?? '').trim(),
-    category: (row.category ?? '').trim(),
-    email: (row.email ?? '').trim().toLowerCase(),
-    city: (row.city ?? '').trim(),
-    phone: (row.phone ?? '').trim(),
-    website: (row.website ?? '').trim(),
-    source: (row.source ?? 'CSV Import').trim(),
-    notes: (row.notes ?? '').trim(),
+    country:     (row.country     ?? '').trim(),
+    category:    (row.category    ?? '').trim(),
+    email:       (row.email       ?? '').trim().toLowerCase(),
+    city:        (row.city        ?? '').trim(),
+    phone:       (row.phone       ?? '').trim(),
+    website:     (row.website     ?? '').trim(),
+    source:      (row.source      ?? 'CSV Import').trim(),
+    notes:       (row.notes       ?? '').trim(),
   };
 }
+
+// ─── Route handler ───────────────────────────────────────────────────────────
+
+const MAX_FILE_BYTES  = 100 * 1024 * 1024; // 100 MB hard limit
+const INSERT_BATCH    = 500;               // MongoDB insertMany batch size
 
 export async function POST(req: NextRequest) {
   try {
@@ -134,57 +142,133 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get('content-type') ?? '';
     let rows: Record<string, string>[] = [];
 
-    if (contentType.includes('application/json')) {
-      const body = await req.json();
+    // ── 1. Parse incoming body ──────────────────────────────────────────────
+    if (contentType.includes('multipart/form-data')) {
+      // PRIMARY PATH — FormData file upload (no JSON body-size limit)
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Could not read uploaded file. It may be corrupted or the upload was interrupted.' },
+          { status: 400 }
+        );
+      }
+
+      const uploaded = formData.get('file');
+      if (!uploaded || !(uploaded instanceof Blob)) {
+        return NextResponse.json(
+          { success: false, error: 'No CSV file found in the upload. Please attach a file named "file".' },
+          { status: 400 }
+        );
+      }
+
+      if (uploaded.size > MAX_FILE_BYTES) {
+        return NextResponse.json(
+          { success: false, error: `File exceeds the 100 MB limit (${(uploaded.size / 1024 / 1024).toFixed(1)} MB uploaded). Split it into smaller files.` },
+          { status: 413 }
+        );
+      }
+
+      let text: string;
+      try {
+        text = await uploaded.text();
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Failed to read file contents. Ensure the file is a valid UTF-8 CSV.' },
+          { status: 400 }
+        );
+      }
+
+      rows = parseCSV(text);
+
+    } else if (contentType.includes('application/json')) {
+      // LEGACY PATH — rows pre-parsed on the client (kept for backward compat)
+      let body: { rows?: Record<string, string>[] };
+      try {
+        body = await req.json();
+      } catch {
+        // req.json() throws when the body exceeds ~4 MB — give a helpful message
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Request body is too large. Upload the file directly instead of sending pre-parsed JSON rows.',
+          },
+          { status: 413 }
+        );
+      }
       const raw: Record<string, string>[] = Array.isArray(body.rows) ? body.rows : [];
       rows = raw.map(applyMapping);
+
     } else {
-      const text = await req.text();
+      // RAW TEXT / TEXT-CSV fallback
+      let text: string;
+      try {
+        text = await req.text();
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Failed to read request body.' },
+          { status: 400 }
+        );
+      }
       rows = parseCSV(text);
     }
 
+    // ── 2. Validate parsed rows ──────────────────────────────────────────────
     if (rows.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No valid rows found in import data' },
-        { status: 400 },
+        {
+          success: false,
+          error:
+            'No valid rows found. Ensure the CSV has a header row with an "email" column and at least one data row.',
+        },
+        { status: 400 }
       );
     }
 
+    // ── 3. Load existing emails for deduplication ────────────────────────────
     const existingEmails = new Set<string>(
       (await Lead.find({}, { email: 1 }).lean())
         .map((l) => l.email?.toLowerCase() ?? '')
-        .filter(Boolean),
+        .filter(Boolean)
     );
 
+    // ── 4. Validate & score rows ─────────────────────────────────────────────
     const results = {
-      imported: 0,
-      duplicates: 0,
-      skipped: 0,
-      errors: [] as string[],
+      imported:    0,
+      duplicates:  0,
+      skipped:     0,
+      errors:      [] as string[],
       skipReasons: {} as Record<string, number>,
     };
 
-    const toInsert = [];
+    const toInsert: ReturnType<typeof normalizeRow>[] = [];
 
     for (let i = 0; i < rows.length; i++) {
-      const raw = normalizeRow(rows[i]);
+      const raw    = normalizeRow(rows[i]);
       const rowNum = i + 2;
 
       if (!raw.email) {
-        results.errors.push(`Row ${rowNum}: Missing email — row skipped`);
-        results.skipReasons['Missing email'] = (results.skipReasons['Missing email'] ?? 0) + 1;
+        const reason = 'Missing email';
+        results.errors.push(`Row ${rowNum}: ${reason} — row skipped`);
+        results.skipReasons[reason] = (results.skipReasons[reason] ?? 0) + 1;
         results.skipped++;
         continue;
       }
-      if (!raw.companyName) {
-        raw.companyName = 'Unknown Company';
+
+      // Email format sanity check (basic)
+      if (!raw.email.includes('@') || !raw.email.includes('.')) {
+        const reason = 'Invalid email format';
+        results.errors.push(`Row ${rowNum}: ${reason} (${raw.email}) — row skipped`);
+        results.skipReasons[reason] = (results.skipReasons[reason] ?? 0) + 1;
+        results.skipped++;
+        continue;
       }
-      if (!raw.country) {
-        raw.country = 'Unknown';
-      }
-      if (!raw.category) {
-        raw.category = 'General';
-      }
+
+      if (!raw.companyName) raw.companyName = 'Unknown Company';
+      if (!raw.country)     raw.country     = 'Unknown';
+      if (!raw.category)    raw.category    = 'General';
 
       if (existingEmails.has(raw.email)) {
         results.duplicates++;
@@ -193,53 +277,61 @@ export async function POST(req: NextRequest) {
 
       const { score, status } = scoreLead(raw);
 
-      const doc = {
-        companyName: raw.companyName,
-        country: raw.country,
-        category: raw.category,
-        email: raw.email || undefined,
+      toInsert.push({
+        ...raw,
+        email:         raw.email || undefined,
         emailProvider: raw.email ? getEmailProvider(raw.email) : undefined,
-        city: raw.city || undefined,
-        phone: raw.phone || undefined,
-        website: raw.website || undefined,
-        source: raw.source || 'CSV Import',
-        notes: raw.notes || undefined,
+        city:          raw.city     || undefined,
+        phone:         raw.phone    || undefined,
+        website:       raw.website  || undefined,
+        source:        raw.source   || 'CSV Import',
+        notes:         raw.notes    || undefined,
         score,
         status,
-        aiProcessed: false,
-        tags: [],
-        archived: false,
-      };
+        aiProcessed:   false,
+        tags:          [],
+        archived:      false,
+      } as unknown as ReturnType<typeof normalizeRow>);
 
-      if (raw.email) existingEmails.add(raw.email);
-      toInsert.push(doc);
+      existingEmails.add(raw.email);
     }
 
+    // ── 5. Batch insert ──────────────────────────────────────────────────────
     if (toInsert.length > 0) {
-      try {
-        const inserted = await Lead.insertMany(toInsert, { ordered: false });
-        results.imported = inserted.length;
-      } catch (insertErr: unknown) {
-        const e = insertErr as { insertedDocs?: unknown[]; message?: string };
-        results.imported = e.insertedDocs?.length ?? 0;
-        if (e.message) results.errors.push(`Partial insert: ${e.message}`);
+      for (let b = 0; b < toInsert.length; b += INSERT_BATCH) {
+        const batch = toInsert.slice(b, b + INSERT_BATCH);
+        try {
+          const inserted = await Lead.insertMany(batch, { ordered: false });
+          results.imported += inserted.length;
+        } catch (insertErr: unknown) {
+          const e = insertErr as { insertedDocs?: unknown[]; message?: string };
+          results.imported += e.insertedDocs?.length ?? 0;
+          const batchNum = Math.floor(b / INSERT_BATCH) + 1;
+          if (e.message) {
+            results.errors.push(`Batch ${batchNum} partial insert: ${e.message.slice(0, 120)}`);
+          }
+        }
       }
     }
 
     return NextResponse.json({
-      success: true,
-      imported: results.imported,
-      duplicates: results.duplicates,
-      skipped: results.skipped,
+      success:     true,
+      imported:    results.imported,
+      duplicates:  results.duplicates,
+      skipped:     results.skipped,
       skipReasons: results.skipReasons,
-      errors: results.errors,
-      total: rows.length,
+      errors:      results.errors,
+      total:       rows.length,
     });
+
   } catch (err) {
+    // Outer safety net — always return JSON
     console.error('[POST /api/leads/import]', err);
+    const message =
+      err instanceof Error ? err.message : 'Unknown error during import';
     return NextResponse.json(
-      { success: false, error: 'Import failed — please try again' },
-      { status: 500 },
+      { success: false, error: `Import failed: ${message}` },
+      { status: 500 }
     );
   }
 }
