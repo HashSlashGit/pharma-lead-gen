@@ -28,10 +28,6 @@ export async function GET(req: NextRequest) {
       case 'not_interested':
         query.classification = 'not_interested';
         break;
-      case 'unsubscribed':
-        query.classification = 'not_interested';
-        query.needsApproval = false;
-        break;
       case 'handled':
         query.status = { $in: ['draft_approved', 'handled'] };
         break;
@@ -56,7 +52,6 @@ export async function GET(req: NextRequest) {
       return { ...rest, lead: leadId };
     });
 
-    console.log(`[Replies API] latest replies fetched — count:${replies.length} total:${total} filter:${filter}`);
     return NextResponse.json({ replies, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err) {
     console.error('[GET /api/replies]', err);

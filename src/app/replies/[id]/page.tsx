@@ -17,7 +17,6 @@ import {
   AlertCircle,
   Mail,
   Send,
-  FileText,
   MessageSquare,
   ArrowUpRight,
   ArrowDownLeft,
@@ -34,7 +33,6 @@ interface Lead {
   phone?: string;
   website?: string;
   followUpCount: number;
-  aiProcessed: boolean;
 }
 
 interface Reply {
@@ -66,16 +64,6 @@ interface TimelineItem {
   source?: string;
 }
 
-interface EmailLogItem {
-  _id: string;
-  type: string;
-  subject: string;
-  body: string;
-  status: string;
-  sentAt?: string;
-  createdAt: string;
-}
-
 interface DraftLog {
   _id: string;
   subject: string;
@@ -84,27 +72,33 @@ interface DraftLog {
 }
 
 const CLASSIFICATION_LABELS: Record<string, string> = {
-  interested: 'Interested',
-  pricing_query: 'Pricing Query',
-  certificate_query: 'Certificate Query',
-  shipping_query: 'Shipping Query',
-  not_interested: 'Not Interested',
-  unclassified: 'Unclassified',
+  interested:         'Interested',
+  pricing_query:      'Pricing Query',
+  certificate_query:  'Certificate Query',
+  shipping_query:     'Shipping Query',
+  not_interested:     'Not Interested',
+  needs_review:       'Needs Review',
+  do_not_contact:     'Do Not Contact',
+  out_of_office:      'Out of Office',
+  unclassified:       'Unclassified',
 };
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
-  interested: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  pricing_query: 'bg-blue-100 text-blue-700 border-blue-200',
+  interested:        'bg-emerald-100 text-emerald-700 border-emerald-200',
+  pricing_query:     'bg-blue-100 text-blue-700 border-blue-200',
   certificate_query: 'bg-violet-100 text-violet-700 border-violet-200',
-  shipping_query: 'bg-cyan-100 text-cyan-700 border-cyan-200',
-  not_interested: 'bg-slate-100 text-slate-500 border-slate-200',
-  unclassified: 'bg-amber-100 text-amber-700 border-amber-200',
+  shipping_query:    'bg-cyan-100 text-cyan-700 border-cyan-200',
+  not_interested:    'bg-slate-100 text-slate-500 border-slate-200',
+  needs_review:      'bg-amber-100 text-amber-700 border-amber-200',
+  do_not_contact:    'bg-rose-100 text-rose-600 border-rose-200',
+  out_of_office:     'bg-slate-100 text-slate-500 border-slate-200',
+  unclassified:      'bg-amber-100 text-amber-600 border-amber-200',
 };
 
 // Classifications that can receive AI draft generation
 const DRAFTABLE = new Set(['interested', 'pricing_query', 'certificate_query', 'shipping_query', 'unclassified']);
 
-function formatDate(iso: string) {
+function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short',
     hour: '2-digit', minute: '2-digit',
@@ -115,7 +109,6 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
 
   const [reply, setReply] = useState<Reply | null>(null);
-  const [emailHistory, setEmailHistory] = useState<EmailLogItem[]>([]);
   const [draftLog, setDraftLog] = useState<DraftLog | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,10 +117,12 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState('');
 
+  const [editedBody, setEditedBody] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [approveResult, setApproveResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [rejecting, setRejecting] = useState(false);
+  const [handling, setHandling]   = useState(false);
 
   const [updatingLeadStatus, setUpdatingLeadStatus] = useState(false);
 
@@ -141,7 +136,6 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
         setError(data.error);
       } else {
         setReply(data.reply);
-        setEmailHistory(data.emailHistory ?? []);
         setDraftLog(data.draftLog ?? null);
         setTimeline(data.timeline ?? []);
       }
@@ -154,6 +148,9 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => { fetchReply(); }, [fetchReply]);
 
+  // Reset draft edit state whenever the page navigates to a different reply
+  useEffect(() => { setEditedBody(null); }, [id]);
+
   const generateDraft = async () => {
     setGenerating(true);
     setGenError('');
@@ -163,6 +160,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
       if (data.error) {
         setGenError(data.error);
       } else {
+        setEditedBody(null);
         await fetchReply(); // refresh to get updated reply + draft
       }
     } catch {
@@ -176,7 +174,13 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
     setApproving(true);
     setApproveResult(null);
     try {
-      const res = await fetch(`/api/replies/${id}/approve-send`, { method: 'POST' });
+      const body: Record<string, unknown> = {};
+      if (editedBody !== null) body['body'] = editedBody;
+      const res = await fetch(`/api/replies/${id}/approve-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
       setApproveResult({ success: data.success, message: data.message ?? data.error });
       if (data.success) await fetchReply();
@@ -202,7 +206,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
   };
 
   const markHandled = async () => {
-    setRejecting(true);
+    setHandling(true);
     try {
       await fetch(`/api/replies/${id}/reject-draft`, {
         method: 'POST',
@@ -211,7 +215,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
       });
       await fetchReply();
     } finally {
-      setRejecting(false);
+      setHandling(false);
     }
   };
 
@@ -243,7 +247,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
   if (error || !reply) {
     return (
       <AppShell>
-        <div className="flex items-center gap-2 text-rose-600 text-sm">
+        <div role="alert" className="flex items-center gap-2 text-rose-600 text-sm">
           <AlertCircle size={16} />
           {error || 'Reply not found'}
         </div>
@@ -263,8 +267,8 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
       {/* Back nav */}
       <div className="mb-6">
         <Link
-          href="/replies"
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-700 text-sm transition-colors"
+          href="/leads/reply"
+          className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-700 text-sm transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
         >
           <ArrowLeft size={16} />
           Reply Inbox
@@ -295,17 +299,12 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                     {CLASSIFICATION_LABELS[classification] ?? classification}
                   </span>
                 )}
-                {reply.needsApproval && reply.status === 'pending' && (
-                  <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-600 border border-rose-200">
-                    Needs Review
-                  </span>
-                )}
               </div>
             </div>
 
             <div className="text-xs text-slate-400 mb-3 flex items-center gap-1">
               <Clock size={12} />
-              Received {formatDate(reply.createdAt)}
+              Received {formatDate(reply.receivedAt ?? reply.createdAt)}
             </div>
 
             <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed border border-slate-100">
@@ -347,14 +346,33 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                   <p className="text-sm text-slate-700 font-medium">{draftLog.subject}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-1">Draft Body</p>
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                    {draftLog.body}
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-semibold text-slate-500">Draft Body</p>
+                    {editedBody !== null && editedBody !== draftLog.body && (
+                      <button
+                        type="button"
+                        onClick={() => setEditedBody(null)}
+                        className="text-xs text-slate-400 hover:text-slate-600 underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400 rounded"
+                      >
+                        Reset to original
+                      </button>
+                    )}
                   </div>
+                  <textarea
+                    aria-label="Edit draft email body"
+                    className="w-full min-h-[160px] bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700 leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-300"
+                    value={editedBody ?? draftLog.body}
+                    onChange={(e) => setEditedBody(e.target.value)}
+                  />
+                  {editedBody !== null && editedBody !== draftLog.body && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Draft edited — your version will be sent.
+                    </p>
+                  )}
                 </div>
 
                 {approveResult && (
-                  <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${approveResult.success ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-600 border border-rose-200'}`}>
+                  <div role={approveResult.success ? 'status' : 'alert'} className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${approveResult.success ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-600 border border-rose-200'}`}>
                     {approveResult.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                     {approveResult.message}
                   </div>
@@ -362,6 +380,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
 
                 <div className="flex items-center gap-3 pt-1">
                   <button
+                    type="button"
                     onClick={approveSend}
                     disabled={approving}
                     className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60"
@@ -370,6 +389,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                     {approving ? 'Sending…' : 'Approve & Send'}
                   </button>
                   <button
+                    type="button"
                     onClick={rejectDraft}
                     disabled={rejecting}
                     className="flex items-center gap-2 border border-slate-300 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-60"
@@ -386,42 +406,33 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
 
             {/* Draft rejected — allow regeneration */}
             {reply.status === 'draft_rejected' && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm">
-                  <XCircle size={14} />
-                  Draft rejected. You can generate a new one.
-                </div>
+              <div className="flex items-center gap-2 text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm">
+                <XCircle size={14} />
+                Draft rejected. You can generate a new one.
               </div>
             )}
 
             {/* Generate button */}
             {canGenerateDraft && !isDraftReady && !isApproved && !isHandled && (
               <div className="space-y-3">
-                {classification === 'not_interested' ? (
-                  <p className="text-sm text-slate-400">
-                    AI drafts are not generated for &ldquo;Not Interested&rdquo; replies.
+                <button
+                  type="button"
+                  onClick={generateDraft}
+                  disabled={generating}
+                  className="flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-60"
+                >
+                  {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {generating ? 'Generating…' : 'Generate AI Draft'}
+                </button>
+                {genError && (
+                  <p role="alert" className="text-xs text-rose-600 flex items-center gap-1">
+                    <AlertCircle size={12} />
+                    {genError}
                   </p>
-                ) : (
-                  <>
-                    <button
-                      onClick={generateDraft}
-                      disabled={generating}
-                      className="flex items-center gap-2 bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition-colors disabled:opacity-60"
-                    >
-                      {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      {generating ? 'Generating…' : 'Generate AI Draft'}
-                    </button>
-                    {genError && (
-                      <p className="text-xs text-rose-600 flex items-center gap-1">
-                        <AlertCircle size={12} />
-                        {genError}
-                      </p>
-                    )}
-                    <p className="text-xs text-slate-400">
-                      Uses Claude Haiku — logged to usage tracker. Draft requires your approval before sending.
-                    </p>
-                  </>
                 )}
+                <p className="text-xs text-slate-400">
+                  Uses Claude Haiku — logged to usage tracker. Draft requires your approval before sending.
+                </p>
               </div>
             )}
           </div>
@@ -481,7 +492,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                       </div>
 
                       {/* Card */}
-                      <div className={`flex-1 border rounded-lg p-3 ${cardStyle}`}>
+                      <div className={`flex-1 border rounded-lg p-3 ${cardStyle}`} aria-current={isCurrent ? 'true' : undefined}>
                         <div className="flex items-center gap-2 flex-wrap mb-1.5">
                           <span className="text-xs font-semibold text-slate-700">{typeLabel}</span>
                           {isNewest && (
@@ -491,8 +502,8 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                             <span className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700">Viewing</span>
                           )}
                           {item.classification && (
-                            <span className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 capitalize">
-                              {item.classification.replace('_', ' ')}
+                            <span className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">
+                              {CLASSIFICATION_LABELS[item.classification] ?? item.classification.replaceAll('_', ' ')}
                             </span>
                           )}
                           {item.status && (
@@ -505,7 +516,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                                 ? 'bg-amber-100 text-amber-700'
                                 : 'bg-slate-100 text-slate-500'
                             }`}>
-                              {item.status.replace('_', ' ')}
+                              {item.status.replaceAll('_', ' ')}
                             </span>
                           )}
                         </div>
@@ -513,7 +524,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                           <p className="text-xs font-medium text-slate-700 mb-1">{item.subject}</p>
                         )}
                         <p className="text-xs text-slate-600 line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                          {item.body.slice(0, 300)}{item.body.length > 300 ? '…' : ''}
+                          {item.body.slice(0, 300)}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
                           <Clock size={10} className="text-slate-300" />
@@ -530,36 +541,6 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           )}
 
-          {/* Email history fallback (shown only when timeline is empty) */}
-          {timeline.length === 0 && emailHistory.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <h2 className="text-base font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                <FileText size={16} className="text-slate-400" />
-                Email History
-              </h2>
-              <div className="space-y-3">
-                {emailHistory.map((log) => (
-                  <div key={log._id} className="border border-slate-100 rounded-lg p-3">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-xs font-semibold text-slate-600 capitalize">
-                        {log.type.replace('_', ' ')}
-                      </span>
-                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                        log.status === 'sent' ? 'bg-emerald-100 text-emerald-700'
-                        : log.status === 'ready_to_send_test' ? 'bg-amber-100 text-amber-700'
-                        : log.status === 'failed' ? 'bg-rose-100 text-rose-600'
-                        : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {log.status}
-                      </span>
-                    </div>
-                    <p className="text-xs font-medium text-slate-700">{log.subject}</p>
-                    <p className="text-xs text-slate-400 mt-1">{formatDate(log.createdAt)}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ── Right column: lead info + manual actions ── */}
@@ -597,12 +578,6 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                   <span className="text-slate-500">Follow-Ups</span>
                   <span className="text-slate-700">{lead.followUpCount}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">AI Processed</span>
-                  <span className={lead.aiProcessed ? 'text-emerald-600 font-medium text-xs' : 'text-slate-400 text-xs'}>
-                    {lead.aiProcessed ? 'Yes' : 'No'}
-                  </span>
-                </div>
               </div>
             </div>
           )}
@@ -613,6 +588,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
               <h2 className="text-sm font-semibold text-slate-700 mb-3">Manual Actions</h2>
               <div className="space-y-2">
                 <button
+                  type="button"
                   onClick={() => updateLeadStatus('warm')}
                   disabled={updatingLeadStatus || lead.status === 'warm'}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
@@ -621,6 +597,7 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                   Mark Interested (Warm)
                 </button>
                 <button
+                  type="button"
                   onClick={() => updateLeadStatus('cold')}
                   disabled={updatingLeadStatus || lead.status === 'cold'}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 transition-colors disabled:opacity-50"
@@ -629,8 +606,9 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                   Mark Not Interested
                 </button>
                 <button
+                  type="button"
                   onClick={markHandled}
-                  disabled={rejecting}
+                  disabled={handling}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
                 >
                   <CheckCircle2 size={14} />
@@ -638,21 +616,10 @@ export default function ReplyDetailPage({ params }: { params: Promise<{ id: stri
                 </button>
               </div>
               <p className="text-xs text-slate-400 mt-3">
-                &ldquo;Mark as Handled&rdquo; closes this reply without sending — use when you respond manually outside the system.
+                "Mark as Handled" closes this reply without sending — use when you respond manually outside the system.
               </p>
             </div>
           )}
-
-          {/* Cost note */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-500">
-            <p className="font-medium text-slate-600 mb-1">Claude usage rules</p>
-            <ul className="space-y-1">
-              <li>· Draft generation requires your click</li>
-              <li>· Not available for &ldquo;Not Interested&rdquo; replies</li>
-              <li>· Sending requires your approval</li>
-              <li>· Every AI call is logged with cost</li>
-            </ul>
-          </div>
         </div>
       </div>
     </AppShell>

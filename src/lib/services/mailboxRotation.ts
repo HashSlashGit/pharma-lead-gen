@@ -9,6 +9,13 @@ export const DAILY_LIMIT: Record<IInboxAccount['accountType'], number> = {
   personal:  450,
 };
 
+/** Minimal shape needed for daily-quota math — satisfied by both full documents and .lean() results. */
+interface QuotaFields {
+  dailySendDate?: Date | null;
+  dailySendCount: number;
+  accountType: IInboxAccount['accountType'];
+}
+
 function isToday(date: Date | undefined | null): boolean {
   if (!date) return false;
   const d = new Date(date);
@@ -20,11 +27,11 @@ function isToday(date: Date | undefined | null): boolean {
   );
 }
 
-function getDailyCount(account: IInboxAccount): number {
+export function getDailyCount(account: QuotaFields): number {
   return isToday(account.dailySendDate) ? account.dailySendCount : 0;
 }
 
-function isUnderLimit(account: IInboxAccount): boolean {
+export function isUnderLimit(account: QuotaFields): boolean {
   return getDailyCount(account) < DAILY_LIMIT[account.accountType ?? 'personal'];
 }
 
@@ -164,4 +171,31 @@ export async function getMailboxForSend(
   }
 
   return null; // all inboxes exhausted or none connected
+}
+
+export interface RotationSnapshotEntry {
+  id: string;
+  email: string;
+  underLimit: boolean;
+}
+
+/**
+ * Read-only view of the round-robin order getMailboxForSend() would pick
+ * from — same query, same sort, same limit check — but selects/mutates
+ * nothing. Used to show "next mailbox" / rotation position in the Settings
+ * dashboard without affecting actual send rotation.
+ */
+export async function getRotationSnapshot(): Promise<RotationSnapshotEntry[]> {
+  await connectDB();
+
+  const allActive = await InboxAccount.find({ provider: 'gmail', isActive: true })
+    .sort({ lastRotationSelectedAt: 1 })
+    .select('email dailySendCount dailySendDate accountType')
+    .lean();
+
+  return allActive.map((a) => ({
+    id: String(a._id),
+    email: a.email,
+    underLimit: isUnderLimit(a),
+  }));
 }

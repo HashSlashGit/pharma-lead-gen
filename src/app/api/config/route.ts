@@ -30,7 +30,9 @@ export async function GET() {
   let gmailEmail: string | null = null;
   try {
     await connectDB();
-    const account = await InboxAccount.findOne({ provider: 'gmail', isActive: true }).lean();
+    const account = await InboxAccount.findOne({ provider: 'gmail', isActive: true })
+      .sort({ updatedAt: -1 })
+      .lean();
     gmailConnected = !!account;
     gmailEmail = account?.email ?? null;
   } catch {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import AppShell from '@/components/layout/AppShell';
+import GmailDashboard from './GmailDashboard';
 import {
   CheckCircle,
   XCircle,
@@ -13,7 +14,6 @@ import {
   Globe,
   Zap,
   Mail,
-  Inbox,
   Activity,
   Loader2,
 } from 'lucide-react';
@@ -30,6 +30,7 @@ interface HealthData {
     oauthConfigured: boolean;
     connected: boolean;
     email: string | null;
+    activeAccounts?: number;
   };
   websiteEnrichment: boolean;
 }
@@ -156,96 +157,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
-
-  // ── Gmail state ────────────────────────────────────────────────────────────
-  const [gmailStatus, setGmailStatus] = useState<{
-    configured: boolean;
-    connected: boolean;
-    email?: string;
-    lastSyncedAt?: string;
-    displayName?: string | null;
-  } | null>(null);
-  const [gmailSyncing, setGmailSyncing]     = useState(false);
-  const [displayNameInput, setDisplayNameInput]   = useState('');
-  const [savingDisplayName, setSavingDisplayName] = useState(false);
-  const [displayNameSaved, setDisplayNameSaved]   = useState(false);
-  const [gmailSyncResult, setGmailSyncResult] = useState<{
-    success: boolean;
-    message: string;
-    checked: number;
-    created: number;
-    duplicates: number;
-    skippedNoLead: number;
-    errors: string[];
-  } | null>(null);
-  const [gmailConnectedNotice, setGmailConnectedNotice] = useState(false);
-  const [gmailErrorNotice, setGmailErrorNotice]         = useState('');
-
-  const fetchGmailStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/gmail/status');
-      const data = await res.json();
-      setGmailStatus(data);
-      setDisplayNameInput(data.displayName ?? '');
-    } catch {
-      setGmailStatus({ configured: false, connected: false });
-    }
-  }, []);
-
-  const handleSaveDisplayName = async () => {
-    setSavingDisplayName(true);
-    setDisplayNameSaved(false);
-    try {
-      await fetch('/api/gmail/account', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName: displayNameInput }),
-      });
-      setDisplayNameSaved(true);
-      fetchGmailStatus();
-    } finally {
-      setSavingDisplayName(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchGmailStatus();
-  }, [fetchGmailStatus]);
-
-  // Detect ?gmail=connected or ?gmail=error after OAuth redirect
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const gmailParam = params.get('gmail');
-    Promise.resolve(gmailParam).then((gp) => {
-      if (gp === 'connected') {
-        setGmailConnectedNotice(true);
-        fetchGmailStatus();
-      } else if (gp === 'error') {
-        const errCode = params.get('gmail_error') ?? 'unknown';
-        setGmailErrorNotice(`Gmail connection failed (${errCode}). Check credentials and try again.`);
-      }
-    });
-  }, [fetchGmailStatus]);
-
-  const handleGmailSync = async () => {
-    setGmailSyncing(true);
-    setGmailSyncResult(null);
-    try {
-      const res = await fetch('/api/gmail/sync', { method: 'POST' });
-      const data = await res.json();
-      setGmailSyncResult(data);
-      if (data.success) fetchGmailStatus();
-    } catch {
-      setGmailSyncResult({
-        success: false,
-        message: 'Sync request failed — check network and try again.',
-        checked: 0, created: 0, duplicates: 0, skippedNoLead: 0, errors: [],
-      });
-    } finally {
-      setGmailSyncing(false);
-    }
-  };
 
   const applyHealthData = (data: HealthData) => {
     setHealth(data);
@@ -467,9 +378,13 @@ export default function SettingsPage() {
                   value: health.gmail.oauthConfigured ? 'Configured' : 'Missing',
                 },
                 {
-                  label: 'Connected Account',
+                  label: 'Connected Accounts',
                   level: health.gmail.connected ? 'ok' : 'off',
-                  value: health.gmail.email ?? (health.gmail.connected ? 'Connected' : 'Not connected'),
+                  value: !health.gmail.connected
+                    ? 'Not connected'
+                    : health.gmail.activeAccounts && health.gmail.activeAccounts > 1
+                    ? `${health.gmail.email} (+${health.gmail.activeAccounts - 1} more)`
+                    : health.gmail.email ?? 'Connected',
                 },
               ]}
               envVars={['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI']}
@@ -490,151 +405,8 @@ export default function SettingsPage() {
               }
             />
 
-            {/* Gmail Inbox Sync */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-                <div className="p-2 rounded-lg text-blue-600 bg-blue-50">
-                  <Inbox size={16} />
-                </div>
-                <div className="flex-1">
-                  <h2 className="font-semibold text-slate-800">Gmail Inbox Sync</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Replies are synced from the connected Gmail inbox and classified into the Reply Inbox.</p>
-                </div>
-                {gmailStatus && (
-                  <>
-                    <StatusBadge
-                      level={!gmailStatus.configured ? 'off' : !gmailStatus.connected ? 'warn' : 'ok'}
-                      label={!gmailStatus.configured ? 'Not Configured' : !gmailStatus.connected ? 'Not Connected' : 'Connected'}
-                    />
-                    <StatusIcon level={!gmailStatus.configured ? 'off' : !gmailStatus.connected ? 'warn' : 'ok'} />
-                  </>
-                )}
-              </div>
-
-              <div className="px-5 py-3 border-b border-slate-100 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">OAuth Credentials</span>
-                  <div className="flex items-center gap-1.5">
-                    <StatusIcon level={gmailStatus?.configured ? 'ok' : 'off'} size={14} />
-                    <span className={gmailStatus?.configured ? 'text-emerald-700 font-medium' : 'text-slate-400'}>
-                      {gmailStatus?.configured ? 'Configured' : 'Missing'}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Connected Account</span>
-                  <div className="flex items-center gap-1.5">
-                    <StatusIcon level={gmailStatus?.connected ? 'ok' : 'off'} size={14} />
-                    <span className={gmailStatus?.connected ? 'text-emerald-700 font-medium' : 'text-slate-400'}>
-                      {gmailStatus?.email ?? (gmailStatus?.connected ? 'Connected' : 'Not connected')}
-                    </span>
-                  </div>
-                </div>
-                {gmailStatus?.lastSyncedAt && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">Last Synced</span>
-                    <span className="text-slate-500 text-xs">
-                      {new Date(gmailStatus.lastSyncedAt).toLocaleString()}
-                    </span>
-                  </div>
-                )}
-                {gmailStatus?.connected && (
-                  <div className="flex items-center justify-between text-sm pt-1">
-                    <span className="text-slate-500">Sender display name</span>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={displayNameInput}
-                        onChange={(e) => { setDisplayNameInput(e.target.value); setDisplayNameSaved(false); }}
-                        placeholder="e.g. United Pharmacy Online"
-                        className="text-xs border border-slate-200 rounded px-2 py-1 w-48 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                      />
-                      <button
-                        onClick={handleSaveDisplayName}
-                        disabled={savingDisplayName}
-                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded transition-colors"
-                      >
-                        {savingDisplayName ? 'Saving…' : displayNameSaved ? 'Saved' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="px-5 py-4 space-y-3">
-                {/* Notices */}
-                {gmailConnectedNotice && (
-                  <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                    <CheckCircle size={12} />
-                    Gmail connected successfully!
-                  </div>
-                )}
-                {gmailErrorNotice && (
-                  <div className="flex items-center gap-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
-                    <XCircle size={12} />
-                    {gmailErrorNotice}
-                  </div>
-                )}
-                {gmailSyncResult && (
-                  <div className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 ${
-                    gmailSyncResult.success
-                      ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
-                      : 'text-rose-700 bg-rose-50 border border-rose-200'
-                  }`}>
-                    {gmailSyncResult.success
-                      ? <CheckCircle size={12} className="shrink-0 mt-0.5" />
-                      : <XCircle size={12} className="shrink-0 mt-0.5" />}
-                    <div>
-                      <span className="font-medium">{gmailSyncResult.message}</span>
-                      {gmailSyncResult.success && (
-                        <span className="ml-1 text-slate-500">
-                          · {gmailSyncResult.checked} checked · {gmailSyncResult.duplicates} duplicate{gmailSyncResult.duplicates !== 1 ? 's' : ''} · {gmailSyncResult.skippedNoLead} unmatched
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {gmailStatus?.configured && !gmailStatus.connected && (
-                    <a
-                      href="/api/gmail/connect"
-                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
-                    >
-                      <Inbox size={12} />
-                      Connect Gmail
-                    </a>
-                  )}
-                  {gmailStatus?.connected && (
-                    <>
-                      <button
-                        onClick={handleGmailSync}
-                        disabled={gmailSyncing}
-                        className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg text-xs font-medium transition-colors"
-                      >
-                        <RefreshCw size={12} className={gmailSyncing ? 'animate-spin' : ''} />
-                        {gmailSyncing ? 'Syncing…' : 'Sync Now'}
-                      </button>
-                      <a
-                        href="/api/gmail/connect"
-                        className="flex items-center gap-2 px-3 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-xs font-medium transition-colors"
-                      >
-                        Reconnect
-                      </a>
-                    </>
-                  )}
-                </div>
-
-                {/* Setup instructions when not configured */}
-                {gmailStatus && !gmailStatus.configured && (
-                  <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    <AlertCircle size={13} className="shrink-0 mt-0.5" />
-                    <span>Add your Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI) to your environment variables, then click <strong>Connect Gmail</strong>.</span>
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Gmail multi-account dashboard: rotation status + per-mailbox operational detail */}
+            <GmailDashboard />
           </div>
         ) : null}
 

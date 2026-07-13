@@ -8,13 +8,22 @@ import { sendCustomEmailViaGmail } from '@/lib/services/gmailSender';
 import { formatEmailBodyAsHtml } from '@/lib/utils/emailFormatting';
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid reply ID' }, { status: 400 });
+    }
+
+    // Optional body override — user may have edited the AI draft before approving
+    const reqBody = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const overrideBody =
+      typeof reqBody['body'] === 'string' ? reqBody['body'].trim() : undefined;
+
+    if (overrideBody !== undefined && overrideBody.length === 0) {
+      return NextResponse.json({ error: 'Draft body cannot be empty' }, { status: 400 });
     }
 
     await connectDB();
@@ -54,10 +63,17 @@ export async function POST(
     // Prefer the same mailbox that handled this lead's thread
     const preferredMailboxId = draftLog.mailboxId?.toString();
 
+    // Persist edited body to EmailLog before sending so the audit trail is accurate
+    if (overrideBody !== undefined) {
+      await EmailLog.findByIdAndUpdate(reply.draftEmailLogId, { body: overrideBody });
+    }
+
+    const sendBody = overrideBody ?? draftLog.body;
+
     const result = await sendCustomEmailViaGmail({
       leadEmail:          lead.email,
       emailSubject:       draftLog.subject,
-      emailBody:          formatEmailBodyAsHtml(draftLog.body),
+      emailBody:          formatEmailBodyAsHtml(sendBody),
       preferredMailboxId,
     });
 

@@ -33,15 +33,16 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      checked:       gmailResult.checked,
-      created:       gmailResult.synced,
-      synced:        gmailResult.synced,
-      duplicates:    gmailResult.duplicates,
-      skippedNoLead: gmailResult.skippedNoLead,
-      errors:        gmailResult.errors,
-      message:       gmailResult.message,
-      gmail:         gmailResult,
-      mailbox:       mailboxResult,
+      checked:          gmailResult.checked,
+      created:          gmailResult.synced,
+      synced:           gmailResult.synced,
+      duplicates:       gmailResult.duplicates,
+      skippedNoLead:    gmailResult.skippedNoLead,
+      autoDraftQueued:  gmailResult.autoDraftQueued,
+      errors:           gmailResult.errors,
+      message:          gmailResult.message,
+      gmail:            gmailResult,
+      mailbox:          mailboxResult,
       totalSynced,
     });
   } catch (err) {

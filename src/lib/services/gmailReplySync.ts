@@ -8,6 +8,7 @@ import { fetchRecentGmailReplies } from '@/lib/services/gmail';
 import { ensureFreshToken } from '@/lib/services/mailboxRotation';
 import { classifyReply } from '@/lib/services/reply-classifier';
 import { resolveNoReplyForLead } from '@/lib/utils/noReplySync';
+import { generateReplyDraft, AUTO_DRAFT_CLASSIFICATIONS } from '@/lib/services/replyDraftService';
 
 export interface GmailReplySyncResult {
   enabled: boolean;
@@ -15,6 +16,8 @@ export interface GmailReplySyncResult {
   synced: number;
   duplicates: number;
   skippedNoLead: number;
+  /** How many auto-draft generation jobs were fired (results arrive asynchronously). */
+  autoDraftQueued?: number;
   errors: string[];
   message: string;
 }
@@ -27,7 +30,7 @@ function makeBodyHash(text: string): string {
 async function syncSingleInbox(
   account: InstanceType<typeof InboxAccount>,
   maxResults: number
-): Promise<{ checked: number; synced: number; duplicates: number; skippedNoLead: number; errors: string[] }> {
+): Promise<{ checked: number; synced: number; duplicates: number; skippedNoLead: number; autoDraftQueued: number; errors: string[] }> {
   const errors: string[] = [];
   let accessToken: string;
 
@@ -36,7 +39,7 @@ async function syncSingleInbox(
     account.accessToken = accessToken;
   } catch (err) {
     errors.push(`[${account.email}] Token refresh failed: ${String(err)}`);
-    return { checked: 0, synced: 0, duplicates: 0, skippedNoLead: 0, errors };
+    return { checked: 0, synced: 0, duplicates: 0, skippedNoLead: 0, autoDraftQueued: 0, errors };
   }
 
   let gmailReplies;
@@ -44,13 +47,13 @@ async function syncSingleInbox(
     gmailReplies = await fetchRecentGmailReplies(accessToken, Math.min(maxResults, 50));
   } catch (err) {
     errors.push(`[${account.email}] Gmail fetch failed: ${String(err)}`);
-    return { checked: 0, synced: 0, duplicates: 0, skippedNoLead: 0, errors };
+    return { checked: 0, synced: 0, duplicates: 0, skippedNoLead: 0, autoDraftQueued: 0, errors };
   }
 
   if (gmailReplies.length === 0) {
     account.lastSyncedAt = new Date();
     await account.save();
-    return { checked: 0, synced: 0, duplicates: 0, skippedNoLead: 0, errors };
+    return { checked: 0, synced: 0, duplicates: 0, skippedNoLead: 0, autoDraftQueued: 0, errors };
   }
 
   // --- Batch Phase 1: 2 queries replace N×3 sequential queries ---
@@ -67,7 +70,7 @@ async function syncSingleInbox(
   const knownMsgIds  = new Set(existingReplies.map(r => r.gmailMessageId));
 
   // --- Process each message using in-memory lookups ---
-  let checked = 0, synced = 0, duplicates = 0, skippedNoLead = 0;
+  let checked = 0, synced = 0, duplicates = 0, skippedNoLead = 0, autoDraftQueued = 0;
 
   for (const gReply of gmailReplies) {
     checked++;
@@ -109,6 +112,18 @@ async function syncSingleInbox(
       // Add to local known-set so duplicate messages within the same batch are caught.
       knownMsgIds.add(gReply.gmailMessageId);
       synced++;
+
+      // Auto-generate AI draft for high-confidence warm replies — fire-and-forget.
+      // The sync response is never delayed by this; Claude failures are logged and swallowed.
+      if (needsApproval && AUTO_DRAFT_CLASSIFICATIONS.has(classification)) {
+        autoDraftQueued++;
+        void generateReplyDraft(savedReply._id.toString()).catch((err) => {
+          console.warn(
+            `[gmailReplySync] auto-draft failed for ${gReply.senderEmail}:`,
+            String(err).slice(0, 120),
+          );
+        });
+      }
     } catch (err) {
       errors.push(`[${account.email}] Error processing ${gReply.senderEmail}: ${String(err)}`);
     }
@@ -117,7 +132,7 @@ async function syncSingleInbox(
   account.lastSyncedAt = new Date();
   await account.save();
 
-  return { checked, synced, duplicates, skippedNoLead, errors };
+  return { checked, synced, duplicates, skippedNoLead, autoDraftQueued, errors };
 }
 
 export async function runGmailReplySync(maxResults = 50): Promise<GmailReplySyncResult> {
@@ -137,15 +152,16 @@ export async function runGmailReplySync(maxResults = 50): Promise<GmailReplySync
     };
   }
 
-  let totalChecked = 0, totalSynced = 0, totalDuplicates = 0, totalSkippedNoLead = 0;
+  let totalChecked = 0, totalSynced = 0, totalDuplicates = 0, totalSkippedNoLead = 0, totalAutoDraftQueued = 0;
   const allErrors: string[] = [];
 
   for (const account of accounts) {
     const result = await syncSingleInbox(account, maxResults);
-    totalChecked       += result.checked;
-    totalSynced        += result.synced;
-    totalDuplicates    += result.duplicates;
-    totalSkippedNoLead += result.skippedNoLead;
+    totalChecked          += result.checked;
+    totalSynced           += result.synced;
+    totalDuplicates       += result.duplicates;
+    totalSkippedNoLead    += result.skippedNoLead;
+    totalAutoDraftQueued  += result.autoDraftQueued;
     allErrors.push(...result.errors);
   }
 
@@ -159,12 +175,13 @@ export async function runGmailReplySync(maxResults = 50): Promise<GmailReplySync
       : 'No new replies found in Gmail inbox.';
 
   return {
-    enabled:       true,
-    checked:       totalChecked,
-    synced:        totalSynced,
-    duplicates:    totalDuplicates,
-    skippedNoLead: totalSkippedNoLead,
-    errors:        allErrors,
+    enabled:          true,
+    checked:          totalChecked,
+    synced:           totalSynced,
+    duplicates:       totalDuplicates,
+    skippedNoLead:    totalSkippedNoLead,
+    autoDraftQueued:  totalAutoDraftQueued,
+    errors:           allErrors,
     message,
   };
 }

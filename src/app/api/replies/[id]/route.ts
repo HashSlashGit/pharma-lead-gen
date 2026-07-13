@@ -95,8 +95,6 @@ export async function GET(
     // Sort oldest → newest by effective timestamp
     timeline.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-    console.log(`[Reply Detail] timeline built — items:${timeline.length} replies:${allLeadReplies.length} emails:${allEmailLogs.length} leadId:${leadId}`);
-
     // emailHistory kept newest-first for backward compat
     const emailHistory = [...allEmailLogs].reverse();
 

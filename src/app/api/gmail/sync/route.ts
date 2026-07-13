@@ -28,12 +28,13 @@ export async function POST(): Promise<NextResponse> {
   }
 
   return NextResponse.json({
-    success: result.errors.length === 0 || result.synced > 0,
-    message:      result.message,
-    checked:      result.checked,
-    created:      result.synced,
-    duplicates:   result.duplicates,
-    skippedNoLead: result.skippedNoLead,
-    errors:       result.errors,
+    success:         result.errors.length === 0 || result.synced > 0,
+    message:         result.message,
+    checked:         result.checked,
+    created:         result.synced,
+    duplicates:      result.duplicates,
+    skippedNoLead:   result.skippedNoLead,
+    autoDraftQueued: result.autoDraftQueued,
+    errors:          result.errors,
   });
 }

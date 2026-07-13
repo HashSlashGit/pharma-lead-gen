@@ -7,6 +7,9 @@
 import { randomBytes } from 'crypto';
 import { getSettings } from '@/lib/services/settingsCache';
 
+/** Name of the short-lived cookie carrying the OAuth CSRF state token. */
+export const GMAIL_OAUTH_STATE_COOKIE = 'gmail_oauth_state';
+
 export interface GmailReply {
   gmailMessageId: string;
   gmailThreadId: string;
@@ -113,7 +116,7 @@ function resolveRedirectUri(
   return { redirectUri: undefined, source: 'none' };
 }
 
-export async function getGmailOAuthUrl(requestOrigin?: string): Promise<string> {
+export async function getGmailOAuthUrl(requestOrigin: string | undefined, state: string): Promise<string> {
   const s = await getSettings();
   const clientId = s.googleClientId;
   const { redirectUri, source } = resolveRedirectUri(s, requestOrigin);
@@ -132,6 +135,7 @@ export async function getGmailOAuthUrl(requestOrigin?: string): Promise<string> 
     ].join(' '),
     access_type: 'offline',
     prompt: 'consent',
+    state,
   });
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;

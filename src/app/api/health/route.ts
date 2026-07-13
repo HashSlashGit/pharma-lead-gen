@@ -95,6 +95,7 @@ export async function GET() {
 
   try {
     const accounts = await InboxAccount.find({ provider: 'gmail' })
+      .sort({ updatedAt: -1 })
       .select('email isActive accountType dailySendCount dailySendDate')
       .lean();
 

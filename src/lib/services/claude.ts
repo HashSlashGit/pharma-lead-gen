@@ -85,54 +85,6 @@ Write a concise, professional outbound email (under 200 words).
 }
 
 /**
- * Classify an inbound reply and suggest a draft response.
- * Use this when a lead replies to an email.
- */
-export async function analyzeReply(params: {
-  leadId: string;
-  replyBody: string;
-  companyName: string;
-}): Promise<{ classification: string; draft: string; needsApproval: boolean }> {
-  const client = await getClient();
-
-  const prompt = `You are analyzing a reply from a pharmaceutical lead.
-
-Company: ${params.companyName}
-Reply: """${params.replyBody}"""
-
-1. Classify the reply as ONE of: interested | not_interested | pricing_query | certificate_query | shipping_query | unclassified
-2. Write a short professional response draft (under 150 words)
-3. Does this reply need human approval before sending? (yes/no)
-
-Respond in this exact JSON format:
-{
-  "classification": "...",
-  "draft": "...",
-  "needsApproval": true/false
-}`;
-
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '{}';
-  await logUsage('analyze_reply', params.leadId, response.usage.input_tokens, response.usage.output_tokens);
-
-  try {
-    const parsed = JSON.parse(text);
-    return {
-      classification: parsed.classification ?? 'unclassified',
-      draft: parsed.draft ?? '',
-      needsApproval: parsed.needsApproval ?? true,
-    };
-  } catch {
-    return { classification: 'unclassified', draft: '', needsApproval: true };
-  }
-}
-
-/**
  * Improve a manually composed email draft.
  * Called ONLY when user clicks "Improve with AI". Never automatic.
  * Preserves {{variable}} placeholders. Max 400 tokens.
@@ -162,7 +114,7 @@ Return ONLY the improved email body. No preamble, no explanation, no sign-off la
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  await logUsage('personalized_email', params.leadId, response.usage.input_tokens, response.usage.output_tokens);
+  await logUsage('draft_response', params.leadId, response.usage.input_tokens, response.usage.output_tokens);
   return text;
 }
 
@@ -179,6 +131,8 @@ export async function draftReplyEmail(params: {
   country: string;
   category: string;
   productContext?: string;
+  /** Original outbound email body — gives Claude thread context for a better reply. */
+  threadContext?: string;
 }): Promise<string> {
   const client = await getClient();
 
@@ -195,10 +149,14 @@ export async function draftReplyEmail(params: {
     ? `\nProduct context: ${params.productContext}`
     : '';
 
+  const threadSection = params.threadContext
+    ? `\nContext (email we sent them): "${params.threadContext}"`
+    : '';
+
   const prompt = `You are a pharmaceutical sales executive replying to an inbound inquiry.
 
 Lead: ${params.companyName} (${params.country}) — ${params.category}
-Their message: "${params.replyBody.slice(0, 600)}"${productSection}
+Their message: "${params.replyBody.slice(0, 600)}"${threadSection}${productSection}
 
 Task: ${hint}
 
@@ -208,35 +166,6 @@ Write a professional reply (under 120 words):
 - Be concise and direct — no filler phrases
 - Do NOT invent pricing, specs, or certifications
 - End with one clear call to action`;
-
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  await logUsage('draft_response', params.leadId, response.usage.input_tokens, response.usage.output_tokens);
-  return text;
-}
-
-/**
- * Draft a response to a specific question (pricing, MOQ, certificates, shipping).
- * Only call when the reply is classified as a query type.
- */
-export async function draftLeadResponse(params: {
-  leadId: string;
-  question: string;
-  context: string;
-}): Promise<string> {
-  const client = await getClient();
-
-  const prompt = `You are a pharmaceutical sales executive responding to a lead inquiry.
-
-Context: ${params.context}
-Question from lead: "${params.question}"
-
-Write a professional, concise response (under 150 words). Be specific. Do not guess pricing or technical details not provided.`;
 
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',

@@ -1,7 +1,8 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getGmailOAuthUrl } from '@/lib/services/gmail';
+import { randomBytes } from 'crypto';
+import { getGmailOAuthUrl, GMAIL_OAUTH_STATE_COOKIE } from '@/lib/services/gmail';
 import { getSettings } from '@/lib/services/settingsCache';
 
 export async function GET(request: NextRequest) {
@@ -17,8 +18,21 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const url = await getGmailOAuthUrl(request.nextUrl.origin);
-    return NextResponse.redirect(url);
+    // CSRF protection: bind this authorization request to a random token,
+    // stashed in a short-lived httpOnly cookie, and verified against the
+    // `state` Google echoes back in /api/gmail/callback.
+    const state = randomBytes(32).toString('hex');
+    const url = await getGmailOAuthUrl(request.nextUrl.origin, state);
+
+    const res = NextResponse.redirect(url);
+    res.cookies.set(GMAIL_OAUTH_STATE_COOKIE, state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 600,
+      path: '/api/gmail',
+    });
+    return res;
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
