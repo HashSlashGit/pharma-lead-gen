@@ -378,7 +378,7 @@ function MailboxCard({
             type="text"
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
-            placeholder="e.g. United Pharmacy Online"
+            placeholder="e.g. Sales Team"
             className="text-xs border border-slate-200 rounded px-2 py-1 flex-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
           />
           <button

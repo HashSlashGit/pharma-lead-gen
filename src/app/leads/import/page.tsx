@@ -10,7 +10,7 @@ import {
 // ---------- alias map (must stay in sync with backend FIELD_ALIASES) ----------
 
 function normalizeKey(s: string): string {
-  return s.toLowerCase().replace(/[\s_]+/g, '');
+  return s.toLowerCase().replace(/[\s_.-]+/g, '');
 }
 
 const FIELD_ALIASES: Record<string, string> = {
@@ -35,9 +35,14 @@ const FIELD_ALIASES: Record<string, string> = {
   type: 'category',
   // email
   email: 'email',
+  emails: 'email',
   emailaddress: 'email',
   emailid: 'email',
   contactemail: 'email',
+  primaryemail: 'email',
+  workemail: 'email',
+  businessemail: 'email',
+  mail: 'email',
   // phone
   phone: 'phone',
   phonenumber: 'phone',
@@ -306,7 +311,7 @@ export default function ImportPage() {
                 <span className="font-normal text-blue-600">(any of these names are recognised)</span>
               </p>
               <p className="text-blue-700 font-mono text-xs">
-                email · emailAddress · contactEmail
+                email · emails · emailAddress · contactEmail · mail
               </p>
               <p className="font-semibold text-blue-800 mt-2 mb-1">Optional columns</p>
               <p className="text-blue-700 font-mono text-xs">

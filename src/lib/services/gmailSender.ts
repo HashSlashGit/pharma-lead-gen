@@ -50,7 +50,7 @@ export async function sendCustomEmailViaGmail(
       subject:  emailSubject,
       body:     emailBody,
       from:     account.email,
-      fromName: account.displayName ?? 'United Pharmacy Online',
+      fromName: account.displayName,
       replyTo:  account.email,
     });
 

@@ -7,7 +7,7 @@ import { getEmailProvider } from '@/lib/utils/emailProvider';
 // ─── Column alias map (must stay in sync with frontend) ─────────────────────
 
 function normalizeKey(s: string): string {
-  return s.toLowerCase().replace(/[\s_]+/g, '');
+  return s.toLowerCase().replace(/[\s_.-]+/g, '');
 }
 
 const FIELD_ALIASES: Record<string, string> = {
@@ -32,9 +32,14 @@ const FIELD_ALIASES: Record<string, string> = {
   type: 'category',
   // email
   email: 'email',
+  emails: 'email',
   emailaddress: 'email',
   emailid: 'email',
   contactemail: 'email',
+  primaryemail: 'email',
+  workemail: 'email',
+  businessemail: 'email',
+  mail: 'email',
   // phone
   phone: 'phone',
   phonenumber: 'phone',
