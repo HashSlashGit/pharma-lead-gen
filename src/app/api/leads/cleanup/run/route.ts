@@ -4,6 +4,7 @@ import Lead, { type ILead } from '@/lib/models/Lead';
 import { writeAuditLog } from '@/lib/utils/auditLog';
 import { getRequestActor } from '@/lib/utils/requestActor';
 import { PROVIDER_EMAIL_FILTER } from '@/lib/utils/emailProvider';
+import { cascadeDeleteLeads } from '@/lib/services/leadCascadeDelete';
 import mongoose from 'mongoose';
 
 type LeadStatus = ILead['status'];
@@ -58,14 +59,14 @@ export async function POST(req: NextRequest) {
         if (confirm !== 'CONFIRM_DELETE') {
           return NextResponse.json({ error: 'Send confirm: "CONFIRM_DELETE"' }, { status: 400 });
         }
-        const res = await Lead.deleteMany({
+        const res = await cascadeDeleteLeads({
           $or: [{ email: { $exists: false } }, { email: { $in: ['', null] } }],
         });
-        affected = res.deletedCount;
+        affected = res.leadsDeleted;
         void writeAuditLog({
           action: 'leads_deleted',
           actorId: actor.actorId,
-          meta: { operation, count: affected, note: 'no-email cleanup' },
+          meta: { operation, count: affected, note: 'no-email cleanup', repliesDeleted: res.repliesDeleted, emailLogsDeleted: res.emailLogsDeleted },
         });
         break;
       }
@@ -74,12 +75,12 @@ export async function POST(req: NextRequest) {
         if (confirm !== 'CONFIRM_DELETE') {
           return NextResponse.json({ error: 'Send confirm: "CONFIRM_DELETE"' }, { status: 400 });
         }
-        const res = await Lead.deleteMany({ archived: true });
-        affected = res.deletedCount;
+        const res = await cascadeDeleteLeads({ archived: true });
+        affected = res.leadsDeleted;
         void writeAuditLog({
           action: 'leads_deleted',
           actorId: actor.actorId,
-          meta: { operation, count: affected, note: 'delete-archived cleanup' },
+          meta: { operation, count: affected, note: 'delete-archived cleanup', repliesDeleted: res.repliesDeleted, emailLogsDeleted: res.emailLogsDeleted },
         });
         break;
       }
@@ -98,12 +99,12 @@ export async function POST(req: NextRequest) {
         if (!emailFilter) {
           return NextResponse.json({ error: `Unknown provider: ${resolvedProvider}` }, { status: 400 });
         }
-        const res = await Lead.deleteMany({ email: emailFilter });
-        affected = res.deletedCount;
+        const res = await cascadeDeleteLeads({ email: emailFilter });
+        affected = res.leadsDeleted;
         void writeAuditLog({
           action: 'leads_deleted',
           actorId: actor.actorId,
-          meta: { operation, provider: resolvedProvider, count: affected },
+          meta: { operation, provider: resolvedProvider, count: affected, repliesDeleted: res.repliesDeleted, emailLogsDeleted: res.emailLogsDeleted },
         });
         break;
       }
@@ -161,12 +162,12 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
-        const res = await Lead.deleteMany({});
-        affected = res.deletedCount;
+        const res = await cascadeDeleteLeads({});
+        affected = res.leadsDeleted;
         void writeAuditLog({
           action: 'leads_deleted',
           actorId: actor.actorId,
-          meta: { operation: 'clear-all', count: affected },
+          meta: { operation: 'clear-all', count: affected, repliesDeleted: res.repliesDeleted, emailLogsDeleted: res.emailLogsDeleted },
         });
         break;
       }

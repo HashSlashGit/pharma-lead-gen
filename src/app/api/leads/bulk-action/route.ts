@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/db/mongoose';
 import Lead from '@/lib/models/Lead';
 import { writeAuditLog } from '@/lib/utils/auditLog';
 import { getRequestActor, type Actor } from '@/lib/utils/requestActor';
+import { cascadeDeleteLeads } from '@/lib/services/leadCascadeDelete';
 import mongoose from 'mongoose';
 
 type BulkAction = 'archive' | 'restore' | 'delete' | 'add-tags' | 'remove-tags' | 'change-status';
@@ -70,12 +71,12 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
-        const res = await Lead.deleteMany({ _id: { $in: validIds } });
-        result = { matched: res.deletedCount, modified: res.deletedCount };
+        const res = await cascadeDeleteLeads({ _id: { $in: validIds } });
+        result = { matched: res.leadsDeleted, modified: res.leadsDeleted };
         void writeAuditLog({
           action: 'leads_deleted',
           actorId: actor?.actorId,
-          meta: { count: result.modified, ids: validIds.slice(0, 20) },
+          meta: { count: result.modified, ids: validIds.slice(0, 20), repliesDeleted: res.repliesDeleted, emailLogsDeleted: res.emailLogsDeleted },
         });
         break;
       }

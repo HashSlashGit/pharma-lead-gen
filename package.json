@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
-    "test": "npx tsx --test src/__tests__/**/*.test.ts"
+    "test": "npx tsx --test src/__tests__/**/*.test.ts",
+    "repair-orphans": "npx tsx scripts/repair-orphaned-lead-refs.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",

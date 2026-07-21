@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
 import Reply from '@/lib/models/Reply';
 import EmailLog from '@/lib/models/EmailLog';
-import { type ILead } from '@/lib/models/Lead';
+import Lead, { type ILead } from '@/lib/models/Lead';
 import mongoose from 'mongoose';
 
 type TimelineItem = {
@@ -29,24 +29,24 @@ export async function GET(
 
     await connectDB();
 
-    const reply = await Reply.findById(id)
-      .populate<{ leadId: ILead }>(
-        'leadId',
-        'companyName email country status score category phone website aiProcessed followUpCount'
-      )
-      .lean();
+    const reply = await Reply.findById(id).lean();
 
     if (!reply) {
       return NextResponse.json({ error: 'Reply not found' }, { status: 404 });
     }
 
-    const lead = reply.leadId as ILead;
-    const leadId = (lead._id as mongoose.Types.ObjectId).toString();
+    // Capture the raw leadId before any populate — it must survive even if
+    // the referenced Lead has since been deleted (cleanup/bulk-delete leave
+    // orphaned replies behind since there's no cascading delete).
+    const leadId = reply.leadId.toString();
+    const lead = await Lead.findById(leadId)
+      .select('companyName email country status score category phone website aiProcessed followUpCount')
+      .lean<ILead | null>();
 
     // Fetch ALL replies for this lead + ALL email logs (sorted ascending for timeline)
     const [allLeadReplies, allEmailLogs] = await Promise.all([
-      Reply.find({ leadId: lead._id }).sort({ createdAt: 1 }).lean(),
-      EmailLog.find({ leadId: lead._id }).sort({ createdAt: 1 }).lean(),
+      Reply.find({ leadId }).sort({ createdAt: 1 }).lean(),
+      EmailLog.find({ leadId }).sort({ createdAt: 1 }).lean(),
     ]);
 
     // draftLog for the current reply (backward compat for UI)
